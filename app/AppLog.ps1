@@ -63,37 +63,69 @@ function Add-JsonLines([string]$Path, $Objects) {
 }
 
 function Get-InstalledApps {
-  $paths = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-  )
   $seen = @{}
   $out  = New-Object System.Collections.Generic.List[object]
 
-  foreach ($p in $paths) {
-    foreach ($k in @(Get-ItemProperty -Path $p -ErrorAction SilentlyContinue)) {
-      if (-not $k.DisplayName) { continue }
-      # Same filter Settings > Installed apps uses: hide components and child installers.
-      if (-not $All -and ($k.SystemComponent -eq 1 -or $k.ParentKeyName)) { continue }
-      $rec = [pscustomobject][ordered]@{
-        name        = ([string]$k.DisplayName).Trim()
-        version     = ([string]$k.DisplayVersion).Trim()
-        publisher   = ([string]$k.Publisher).Trim()
-        installDate = [string]$k.InstallDate
-        source      = 'win32'
+  # The three places Windows keeps "installed programs": 64-bit, 32-bit, and this user's own.
+  # Read through .NET: Get-ItemProperty over these keys gives the same values about 5x slower.
+  $views = @(
+    @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64),
+    @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry32),
+    @([Microsoft.Win32.RegistryHive]::CurrentUser,  [Microsoft.Win32.RegistryView]::Default)
+  )
+  foreach ($v in $views) {
+    $base = $null; $root = $null
+    try {
+      $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($v[0], $v[1])
+      $root = $base.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')
+      if ($root) {
+        foreach ($keyName in $root.GetSubKeyNames()) {
+          $k = $null
+          try { $k = $root.OpenSubKey($keyName) } catch { }
+          if (-not $k) { continue }
+          try {
+            $display = $k.GetValue('DisplayName')
+            if (-not $display) { continue }
+            # Same filter Settings > Installed apps uses: hide components and child installers.
+            if (-not $All -and ($k.GetValue('SystemComponent') -eq 1 -or $k.GetValue('ParentKeyName'))) { continue }
+            $rec = [pscustomobject][ordered]@{
+              name        = ([string]$display).Trim()
+              version     = ([string]$k.GetValue('DisplayVersion')).Trim()
+              publisher   = ([string]$k.GetValue('Publisher')).Trim()
+              installDate = [string]$k.GetValue('InstallDate')
+              source      = 'win32'
+            }
+            $id = "$($rec.name)|$($rec.version)|$($rec.publisher)"
+            if ($seen.ContainsKey($id)) { continue }   # listed under 64-bit, 32-bit and per-user keys
+            $seen[$id] = 1
+            $out.Add($rec)
+          } finally { $k.Close() }
+        }
       }
-      $id = "$($rec.name)|$($rec.version)|$($rec.publisher)"
-      if ($seen.ContainsKey($id)) { continue }   # listed under 64-bit, 32-bit and per-user keys
-      $seen[$id] = 1
-      $out.Add($rec)
+    } catch { } finally {
+      if ($root) { $root.Close() }
+      if ($base) { $base.Close() }
     }
   }
 
   if (-not $NoStore) {
+    # Store apps, from the Windows class behind Get-AppxPackage. Asking it directly gives the
+    # same list without loading the Appx module (about half a second).
+    $pkgs = $null
     try {
-      $pkgs = Get-AppxPackage -ErrorAction Stop |
-        Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and "$($_.SignatureKind)" -eq 'Store' }
+      $null = [Windows.Management.Deployment.PackageManager, Windows.Management.Deployment, ContentType = WindowsRuntime]
+      $pkgs = @((New-Object Windows.Management.Deployment.PackageManager).FindPackagesForUser('') | ForEach-Object {
+        $ver = $_.Id.Version
+        [pscustomobject]@{
+          Name = $_.Id.Name; Publisher = $_.Id.Publisher
+          Version = "$($ver.Major).$($ver.Minor).$($ver.Build).$($ver.Revision)"
+          IsFramework = $_.IsFramework; IsResourcePackage = $_.IsResourcePackage; SignatureKind = "$($_.SignatureKind)"
+        }
+      })
+    } catch { $pkgs = $null }
+    try {
+      if ($null -eq $pkgs) { $pkgs = @(Get-AppxPackage -ErrorAction Stop) }   # fallback, e.g. under PowerShell 7
+      $pkgs = @($pkgs | Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and "$($_.SignatureKind)" -eq 'Store' })
       foreach ($a in $pkgs) {
         $id = "store|$($a.Name)|$($a.Version)"
         if ($seen.ContainsKey($id)) { continue }
@@ -106,7 +138,7 @@ function Get-InstalledApps {
           source      = 'store'
         })
       }
-    } catch { }   # Store cmdlets unavailable (e.g. Windows Server): skip quietly
+    } catch { }   # Store apps unavailable (e.g. Windows Server): skip quietly
   }
 
   $out | Sort-Object source, name

@@ -87,7 +87,7 @@ try {
   $stub = 'param([string]$LogDir, [switch]$Json, [int]$History) [IO.File]::ReadAllText((Join-Path $PSScriptRoot ''{0}''))'
   # My PC: the real PCSpecs.ps1 draws the notes and the summary from the made-up PC.
   $real = Join-Path $root 'app\PCSpecs.ps1'
-  $call = "param([string]`$LogDir, [switch]`$Json) & '$($real.Replace("'", "''"))' -FromFile (Join-Path `$PSScriptRoot 'sample.json')"
+  $call = "param([string]`$LogDir, [switch]`$Json, [switch]`$NoSave) & '$($real.Replace("'", "''"))' -FromFile (Join-Path `$PSScriptRoot 'sample.json')"
   [IO.File]::WriteAllText((Join-Path $demo 'app\PCSpecs.ps1'), $call, $utf8)
   [IO.File]::WriteAllText((Join-Path $demo 'app\AppLog.ps1'),  ($stub -f 'result.json'), $utf8)
   $latest = [ordered]@{ schema = 'applog/1'; taken = $ts; count = $apps.Count; apps = $apps }

@@ -23,7 +23,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot; if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
-$PsExe    = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $TaskName = 'Personal-PC-AppLog'
 $logsPath = $LogDir
 if (-not $logsPath) {
@@ -49,8 +48,6 @@ Welcome. Pick a button on the left.
 Nothing on your PC is changed. Results are saved in the "logs" folder
 next to this program and are never sent anywhere.
 '@
-
-function Quote([string]$s) { "'" + ($s -replace "'", "''") + "'" }
 
 function Format-Change($e, [bool]$WithDate) {
   $ver = ''
@@ -307,7 +304,7 @@ try {
   $form.Controls.Add($status)
 
   $timer = New-Object System.Windows.Forms.Timer
-  $timer.Interval = 100
+  $timer.Interval = 30
 
   # ---- running a tool without freezing the window ----------------------------------
   function Set-Busy([bool]$On, [string]$Msg) {
@@ -325,42 +322,82 @@ try {
     $script:view = $View
     $btnSave.Enabled = [bool]$View
   }
+  # ---- the tool engine: opened in the background as soon as the window is up -----------------
+  $script:engine = $null     # the reused PowerShell runspace
+  $script:warm   = $null     # the warm-up run, while it is still going
+  $warmTimer = New-Object System.Windows.Forms.Timer
+  $warmTimer.Interval = 30
+  $warmTimer.Add_Tick({
+    if (-not $script:engine) {
+      $script:engine = [runspacefactory]::CreateRunspace()
+      $script:engine.OpenAsync()
+      return
+    }
+    if ($script:engine.RunspaceStateInfo.State -eq 'Opening') { return }
+    $warmTimer.Stop()
+    if ($script:engine.RunspaceStateInfo.State -ne 'Opened' -or $script:job) { return }
+    # A tool's first run in a process is slow: Windows' query system has to start and the
+    # display helper has to be compiled. Do one silent practice run of the specs tool now
+    # (it saves nothing), so the first real click is as quick as every later one.
+    $ps = [powershell]::Create()
+    $ps.Runspace = $script:engine
+    [void]$ps.AddScript('param($Path) & $Path -NoSave | Out-Null').AddArgument((Join-Path $here 'PCSpecs.ps1'))
+    $script:warm = @{ ps = $ps; async = $ps.BeginInvoke() }
+  })
+  function Get-ToolEngine {
+    # Returns the engine, open and idle. Normally the practice run is long finished by the
+    # first click; if someone clicks at once, it is simply stopped.
+    if ($script:warm) {
+      try { $script:warm.ps.Stop() } catch { }
+      $script:warm.ps.Dispose()
+      $script:warm = $null
+    }
+    while ($script:engine -and $script:engine.RunspaceStateInfo.State -eq 'Opening') { Start-Sleep -Milliseconds 10 }
+    if (-not $script:engine -or $script:engine.RunspaceStateInfo.State -ne 'Opened') {
+      $script:engine = [runspacefactory]::CreateRunspace()
+      $script:engine.Open()
+    }
+    $script:engine
+  }
+
   function Start-Tool([string]$Script, [string[]]$ToolArgs, [string]$Busy, [scriptblock]$Done) {
     if ($script:job) { return }
-    # UTF-8 keeps app names with accents readable. Arguments here are fixed switches and numbers.
-    $cmd = '$ProgressPreference = ''SilentlyContinue''; [Console]::OutputEncoding = [Text.Encoding]::UTF8; & ' + (Quote (Join-Path $here $Script))
-    if ($ToolArgs) { $cmd += ' ' + ($ToolArgs -join ' ') }
-    if ($LogDir -and $Script -ne 'Schedule.ps1') { $cmd += ' -LogDir ' + (Quote $LogDir) }
-    $cmd += '; exit $LASTEXITCODE'
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName               = $PsExe
-    $psi.Arguments              = '-NoProfile -ExecutionPolicy Bypass -Command "' + $cmd + '"'
-    $psi.UseShellExecute        = $false
-    $psi.CreateNoWindow         = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
-    $p = [System.Diagnostics.Process]::Start($psi)
-    $script:job = @{ proc = $p; out = $p.StandardOutput.ReadToEndAsync(); err = $p.StandardError.ReadToEndAsync(); done = $Done }
+    # The tool runs in a second PowerShell engine inside this process, on its own thread.
+    # That keeps the window responsive and avoids starting a new powershell.exe per click,
+    # and what a tool loads (CIM, the display helper) is already there for the next click.
+    # The engine is kept and reused; each run starts in a fresh scope.
+    $params = @{}
+    foreach ($a in @($ToolArgs)) { if ($a) { $params[$a.TrimStart('-')] = $true } }     # '-Json' -> Json = true
+    if ($LogDir -and $Script -ne 'Schedule.ps1') { $params['LogDir'] = $LogDir }
+    $ps = [powershell]::Create()
+    $ps.Runspace = Get-ToolEngine
+    [void]$ps.AddScript('param($Path, $Params) $global:LASTEXITCODE = 0; & $Path @Params; "EXITCODE=$LASTEXITCODE"').AddArgument((Join-Path $here $Script)).AddArgument($params)
+    $script:job = @{ ps = $ps; async = $ps.BeginInvoke(); done = $Done }
     Set-Busy $true $Busy
     $timer.Start()
   }
   $timer.Add_Tick({
     $j = $script:job
-    if (-not $j -or -not $j.proc.HasExited -or -not $j.out.IsCompleted -or -not $j.err.IsCompleted) { return }
+    if (-not $j -or -not $j.async.IsCompleted) { return }
     $timer.Stop()
     $script:job = $null
     try {
-      $text = [string]$j.out.Result
-      $err  = ([string]$j.err.Result).Trim()
-      if ($err -and $err -notlike '#< CLIXML*') { $text = $text.TrimEnd() + "`r`n`r`n" + $err }
-      $code = $j.proc.ExitCode
+      $code = 0
+      $lines = @($j.ps.EndInvoke($j.async) | ForEach-Object { [string]$_ })
+      if ($lines.Count -gt 0 -and $lines[-1] -match '^EXITCODE=(\d*)$') {
+        if ($Matches[1]) { $code = [int]$Matches[1] }
+        $lines = @($lines | Select-Object -SkipLast 1)
+      }
+      # Lines a tool wrote with Write-Host, and any errors, arrive on their own streams.
+      $lines += @($j.ps.Streams.Information | ForEach-Object { [string]$_ })
+      $lines += @($j.ps.Streams.Error | ForEach-Object { [string]$_ })
       Set-Busy $false 'Ready.'
-      & $j.done $text $code
+      & $j.done ($lines -join "`r`n") $code
     } catch {
       Set-Busy $false 'Something went wrong.'
       Show-Text "Something went wrong:`r`n$($_.Exception.Message)"
+    } finally {
+      $j.ps.Dispose()
     }
   })
 
@@ -447,7 +484,11 @@ try {
   $txt.Font  = New-Object System.Drawing.Font('Consolas', 10)
   $form.ResumeLayout($false)
   $form.PerformLayout()
-  $form.Add_Shown({ $form.Activate() })
+  $form.Add_Shown({
+    $form.Activate()
+    # The window is up. Get the tool engine ready in the background while the person looks at it.
+    $warmTimer.Start()
+  })
 
   # ---- test seam: the hook script presses the buttons and checks the result ------------
   if ($TestHook) {
@@ -467,6 +508,10 @@ try {
   # No window available (stripped-down Windows): fall back to the keyboard menu.
   Start-Process -FilePath (Join-Path $here 'Menu.bat')
 } finally {
+  # Closing the window ends any practice run at once, so nothing lingers in the background.
+  try { if ($script:warm) { $script:warm.ps.Stop() } } catch { }
+  try { if ($script:engine) { $script:engine.Dispose() } } catch { }
+
   # Start.bat hides the console window it runs in. After a double-click that console is a
   # throwaway, and its title is the path of cmd.exe. If someone typed Start.bat in their own
   # terminal instead, the title is something else: show that terminal again.

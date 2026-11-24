@@ -63,8 +63,9 @@ function Section([scriptblock]$Block) {
   # One failing section never kills the whole report.
   try { & $Block } catch { [pscustomobject]@{ error = $_.Exception.Message } }
 }
-function Cim([string]$Class, [string]$Ns = 'root\cimv2') {
-  Get-CimInstance -ClassName $Class -Namespace $Ns -ErrorAction Stop
+function Cim([string]$Class, [string]$Ns = 'root\cimv2', [string[]]$Props) {
+  if ($Props) { Get-CimInstance -ClassName $Class -Namespace $Ns -Property $Props -ErrorAction Stop }
+  else        { Get-CimInstance -ClassName $Class -Namespace $Ns -ErrorAction Stop }
 }
 function ToGB($bytes, [int]$Digits = 0) {
   if ($bytes) { [math]::Round([double]$bytes / 1GB, $Digits) } else { $null }
@@ -180,7 +181,8 @@ $system = Section {
 }
 
 $cpu = @(Section {
-  foreach ($p in @(Cim Win32_Processor)) {
+  # Only these four: the full class also measures CPU load, which alone takes about a second.
+  foreach ($p in @(Cim Win32_Processor 'root\cimv2' 'Name', 'NumberOfCores', 'NumberOfLogicalProcessors', 'MaxClockSpeed')) {
     [pscustomobject][ordered]@{
       name    = ([string]$p.Name).Trim()
       cores   = $p.NumberOfCores
@@ -308,23 +310,62 @@ $monitors = @(Section {
 })
 
 $disks = @(Section {
-  $parts = @(Get-Partition -ErrorAction SilentlyContinue | Where-Object { "$($_.DriveLetter)" -match '^[A-Z]$' })
-  foreach ($d in @(Get-PhysicalDisk -ErrorAction Stop | Sort-Object { [int]$_.DeviceId })) {
+  # Same data and wording as Get-PhysicalDisk and Get-Partition, read straight from the classes
+  # behind them. Loading the Storage module for those two cmdlets took over a second.
+  $st = 'root\Microsoft\Windows\Storage'
+  $mediaNames  = @{ 0 = 'Unspecified'; 3 = 'HDD'; 4 = 'SSD'; 5 = 'SCM' }
+  $busNames    = @{ 0 = 'Unknown'; 1 = 'SCSI'; 2 = 'ATAPI'; 3 = 'ATA'; 4 = '1394'; 5 = 'SSA'; 6 = 'Fibre Channel'; 7 = 'USB'; 8 = 'RAID'; 9 = 'iSCSI'
+                    10 = 'SAS'; 11 = 'SATA'; 12 = 'SD'; 13 = 'MMC'; 14 = 'Virtual'; 15 = 'File Backed Virtual'; 16 = 'Spaces'; 17 = 'NVMe'; 18 = 'SCM'; 19 = 'UFS' }
+  $healthNames = @{ 0 = 'Healthy'; 1 = 'Warning'; 2 = 'Unhealthy'; 5 = 'Unknown' }
+  $parts = @()
+  try { $parts = @(Cim MSFT_Partition $st | Where-Object { "$($_.DriveLetter)" -match '^[A-Z]$' }) } catch { }
+  foreach ($d in @(Cim MSFT_PhysicalDisk $st | Sort-Object { [int]$_.DeviceId })) {
     $id = [string]$d.DeviceId
+    $media = $mediaNames[[int]$d.MediaType];   if (-not $media)  { $media = 'Unspecified' }
+    $health = $healthNames[[int]$d.HealthStatus]; if (-not $health) { $health = 'Unknown' }
+    $bus = ''; if ($null -ne $d.BusType) { $bus = $busNames[[int]$d.BusType]; if (-not $bus) { $bus = 'Unknown' } }
     [pscustomobject][ordered]@{
       disk    = [int]$d.DeviceId
       model   = ([string]$d.FriendlyName).Trim()
       sizeGB  = (ToGB $d.Size)
-      media   = [string]$d.MediaType
-      bus     = [string]$d.BusType
-      health  = [string]$d.HealthStatus
+      media   = $media
+      bus     = $bus
+      health  = $health
       letters = ((@($parts | Where-Object { [string]$_.DiskNumber -eq $id }) | ForEach-Object { "$($_.DriveLetter):" }) -join ' ')
     }
   }
 })
 
+# Same list as "Get-NetAdapter -Physical", read from the class behind it with the option that
+# cmdlet passes. Loading the NetAdapter module for one cmdlet took most of a second.
 $netRaw = @()
-try { $netRaw = @(Get-NetAdapter -Physical -ErrorAction Stop | Sort-Object Name) } catch { }
+try {
+  $opt = New-Object Microsoft.Management.Infrastructure.Options.CimOperationOptions
+  $opt.SetCustomOption('Physical', $true, $false)
+  $session = [Microsoft.Management.Infrastructure.CimSession]::Create([NullString]::Value)
+  try { $netRaw = @($session.EnumerateInstances('root\StandardCimv2', 'MSFT_NetAdapter', $opt) | Sort-Object Name) }
+  finally { $session.Dispose() }
+} catch { }
+function Get-NetStatus($n) {
+  # The wording of Get-NetAdapter's Status column.
+  switch ([int]$n.InterfaceOperationalStatus) {
+    1 { return 'Up' } 3 { return 'Testing' } 4 { return 'Unknown' } 5 { return 'Dormant' } 6 { return 'Not Present' } 7 { return 'Lower Layer Down' }
+  }
+  if ([int]$n.InterfaceOperationalStatus -ne 2) { return '' }
+  if ([int]$n.InterfaceAdminStatus -eq 2) { return 'Disabled' }
+  $why = @()
+  if ($n.OperationalStatusDownDefaultPortNotAuthenticated) { $why += 'Not Authenticated' }
+  if ($n.OperationalStatusDownMediaDisconnected)           { $why += 'Disconnected' }
+  if ($n.OperationalStatusDownLowPowerState)               { $why += 'Low Power State' }
+  $why -join ', '
+}
+function Get-LinkSpeed($n) {
+  # The wording of Get-NetAdapter's LinkSpeed column: "2.5 Gbps", "100 Mbps".
+  [decimal]$v = 0; if ($null -ne $n.TransmitLinkSpeed) { $v = $n.TransmitLinkSpeed }
+  $units = '', 'K', 'M', 'G', 'T'; $i = 0
+  while ($v -ge 1000 -and $i -lt 4) { $v /= 1000; $i++ }
+  "$([math]::Round($v, 1)) $($units[$i])bps"
+}
 $network = @(foreach ($n in $netRaw) {
   [pscustomobject][ordered]@{ name = $n.Name; device = $n.InterfaceDescription }
 })
@@ -355,7 +396,7 @@ $live = Section {
       }
     })
     network     = @(foreach ($n in $netRaw) {
-      [pscustomobject][ordered]@{ name = $n.Name; status = [string]$n.Status; linkSpeed = [string]$n.LinkSpeed }
+      [pscustomobject][ordered]@{ name = $n.Name; status = (Get-NetStatus $n); linkSpeed = (Get-LinkSpeed $n) }
     })
   }
 }

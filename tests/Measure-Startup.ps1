@@ -26,6 +26,7 @@ Add-Type -Namespace PCAppLogTest -Name Win -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
 [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
 [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l);
+[DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr hwnd, out int pid);
 '@
 function Get-Windows {
   # Every visible top-level window titled "PC AppLog".
@@ -62,7 +63,11 @@ foreach ($i in 1..$Runs) {
   if ($h -eq [IntPtr]::Zero) { "run ${i}: window did not appear"; exit 1 }
   $times += $ms
   "run ${i}: $ms ms"
+  $procId = 0
+  [void][PCAppLogTest.Win]::GetWindowThreadProcessId($h, [ref]$procId)
   [void][PCAppLogTest.Win]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)   # WM_CLOSE
+  # Wait until that copy has really gone, so it cannot slow down the next timed start.
+  try { [void][System.Diagnostics.Process]::GetProcessById($procId).WaitForExit(15000) } catch { }
   $wait = [System.Diagnostics.Stopwatch]::StartNew()
   while ([PCAppLogTest.Win]::IsWindow($h) -and $wait.ElapsedMilliseconds -lt 5000) { Start-Sleep -Milliseconds 20 }
   Start-Sleep -Milliseconds 300
