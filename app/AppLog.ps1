@@ -13,7 +13,7 @@
     apps\snapshots\<stamp>.json full list at each change
     runs.jsonl                  one line per run   {ts, tool, status, ...}
 
-.PARAMETER LogDir   Output folder. Default: .\logs next to this script.
+.PARAMETER LogDir   Output folder. Default: the logs folder next to Start.bat.
 .PARAMETER All      Include hidden components and sub-installers.
 .PARAMETER NoStore  Skip Microsoft Store apps.
 .PARAMETER History  Do not snapshot; print logged changes from the last N days.
@@ -37,6 +37,9 @@ $ErrorActionPreference = 'Stop'
 # $PSScriptRoot is empty inside param() defaults in Windows PowerShell 5.1, so resolve here.
 if (-not $LogDir) {
   $here = $PSScriptRoot; if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+  # Normal layout: this script is in app\ and logs\ sits one level up, next to Start.bat.
+  $up = Split-Path -Parent $here
+  if ($up -and (Test-Path -LiteralPath (Join-Path $up 'Start.bat'))) { $here = $up }
   $LogDir = Join-Path $here 'logs'
 }
 $Schema  = 'applog/1'

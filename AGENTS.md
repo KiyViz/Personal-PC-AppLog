@@ -1,17 +1,17 @@
 # AGENTS.md: notes for AI assistants
 
-This repo holds read-only Windows diagnostics. `AppLog.ps1` and `PCSpecs.ps1` never modify the system. They write only under `logs\` (or `-LogDir`).
+This repo holds read-only Windows diagnostics. The scripts live in `app\`. `AppLog.ps1` and `PCSpecs.ps1` never modify the system. They write only under `logs\` next to `Start.bat` (or `-LogDir`).
 
-`Schedule.ps1` is the one exception: it adds or removes a Task Scheduler task named `Personal-PC-AppLog`. Ask the user before running it. `Start.bat` (a window, `Launcher.ps1`) and `Menu.bat` (a terminal menu) are for people; agents should call `AppLog.ps1` and `PCSpecs.ps1` directly. After editing a script, run `tests\Smoke.ps1` and keep the scripts plain ASCII.
+`Schedule.ps1` is the one exception: it adds or removes a Task Scheduler task named `Personal-PC-AppLog`. Ask the user before running it. `Start.bat` (a window, `app\Launcher.ps1`) and `app\Menu.bat` (a terminal menu) are for people; agents should call `AppLog.ps1` and `PCSpecs.ps1` directly. After editing a script, run `tests\Smoke.ps1` and keep the scripts plain ASCII.
 
 ## Run
 
 Use Windows PowerShell 5.1 (built in). From any shell:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\PCSpecs.ps1 -Json -NoSave
-powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\AppLog.ps1 -Json
-powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\AppLog.ps1 -History 30 -Json
+powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\app\PCSpecs.ps1 -Json -NoSave
+powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\app\AppLog.ps1 -Json
+powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\app\AppLog.ps1 -History 30 -Json
 ```
 
 Exit code `0` means ok, `1` means error (the message is in the `error` field). With `-Json`, stdout is one JSON document.

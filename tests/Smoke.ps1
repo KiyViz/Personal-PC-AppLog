@@ -19,7 +19,7 @@ function Check([string]$Name, $Ok) {
   if ($Ok) { "ok    $Name" } else { "FAIL  $Name"; $script:fail++ }
 }
 function Run([string]$Script, [string[]]$A) {
-  $out = & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root $Script) @A
+  $out = & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root (Join-Path 'app' $Script)) @A
   $r = [pscustomobject]@{ code = $LASTEXITCODE; text = (@($out) -join "`n"); json = $null }
   try { $r.json = $r.text | ConvertFrom-Json } catch { }
   $r
@@ -27,7 +27,8 @@ function Run([string]$Script, [string[]]$A) {
 
 try {
   # ---- source files ----
-  foreach ($f in @(Get-ChildItem -LiteralPath $root -File | Where-Object { $_.Extension -in '.ps1', '.bat' })) {
+  $src = @(Get-ChildItem -LiteralPath $root -File) + @(Get-ChildItem -LiteralPath (Join-Path $root 'app'), (Join-Path $root 'tests') -File)
+  foreach ($f in @($src | Where-Object { $_.Extension -in '.ps1', '.bat' })) {
     $bytes = [IO.File]::ReadAllBytes($f.FullName)
     Check "$($f.Name) is plain ASCII" (-not ($bytes | Where-Object { $_ -gt 127 } | Select-Object -First 1))
   }
@@ -81,8 +82,9 @@ try {
   $r = Run 'AppLog.ps1' @('-History', '30', '-LogDir', $tmp)
   Check 'AppLog -History text mode exits 0'      ($r.code -eq 0 -and $r.text -match 'Smoke Test Removed App')
 
-  # ---- window (Start.bat -> Launcher.ps1) ----
-  $r = Run 'Launcher.ps1' @('-SelfTest', '-LogDir', $tmp)
+  # ---- window (Start.bat -> app\Launcher.ps1) ----
+  Check 'Start.bat points at the window'         ((Get-Content -LiteralPath (Join-Path $root 'Start.bat') -Raw) -match 'app\\Launcher\.ps1')
+  $r = Run 'Launcher.ps1' @('-TestHook', (Join-Path $root 'tests\LauncherHook.ps1'), '-LogDir', $tmp)
   Check 'Launcher window opens and its buttons work' ($r.code -eq 0)
   Check 'Launcher My apps page shows earlier changes' ($r.text -match 'EARLIER IN THE LAST 30 DAYS[\s\S]*Removed\s+Smoke Test Removed App')
   if ($r.code -ne 0) { $r.text }

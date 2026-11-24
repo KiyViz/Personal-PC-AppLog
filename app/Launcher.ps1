@@ -3,15 +3,14 @@
   Point-and-click window for AppLog and PCSpecs. Start.bat opens it.
 
 .DESCRIPTION
-  A small window with buttons: show PC specs, check apps for changes, see the
-  last 30 days of changes, copy the result, and turn the weekly automatic check
-  on or off. It only runs the other scripts in this folder and shows what they
+  A small window with buttons: My PC (specs), My apps (what is installed and
+  what changed), copy the result, and turn the weekly automatic check on or
+  off. It only runs the other scripts in this folder and shows what they
   print. Prefer the keyboard? Use Menu.bat.
 
 .PARAMETER LogDir    Passed through to AppLog.ps1 and PCSpecs.ps1.
-.PARAMETER SelfTest  Open the window off-screen, press each read-only button, close.
-                     Prints ok/FAIL lines. Exit code = number of failures.
-.PARAMETER Shot      With -SelfTest: also save a PNG of the window to this path.
+.PARAMETER TestHook  For the automated tests only: a script to run inside the window
+                     (off-screen) instead of waiting for clicks. See tests\LauncherHook.ps1.
 
 .EXAMPLE
   .\Launcher.ps1
@@ -19,15 +18,20 @@
 [CmdletBinding()]
 param(
   [string]$LogDir = '',
-  [switch]$SelfTest,
-  [string]$Shot = ''
+  [string]$TestHook = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot; if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $PsExe    = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $TaskName = 'Personal-PC-AppLog'
-$logsPath = $LogDir; if (-not $logsPath) { $logsPath = Join-Path $here 'logs' }
+$logsPath = $LogDir
+if (-not $logsPath) {
+  # Same default as the tools: logs\ next to Start.bat, one level above app\.
+  $base = $here; $up = Split-Path -Parent $here
+  if ($up -and (Test-Path -LiteralPath (Join-Path $up 'Start.bat'))) { $base = $up }
+  $logsPath = Join-Path $base 'logs'
+}
 $script:job  = $null
 $script:fail = 0
 
@@ -74,7 +78,9 @@ function Get-AppsReport($r) {
   $store = @($apps | Where-Object { $_.source -eq 'store' } | Sort-Object name)
 
   $L = New-Object System.Collections.Generic.List[string]
-  $L.Add("$($r.apps) apps installed. Checked just now.")
+  $head = "$($r.apps) apps installed"
+  if ($store.Count -gt 0) { $head += " ($($desk.Count) desktop apps + $($store.Count) Microsoft Store apps)" }
+  $L.Add("$head. Checked just now.")
   $L.Add('')
 
   $L.Add('NEW SINCE YOUR LAST CHECK')
@@ -111,7 +117,7 @@ function Get-AppsReport($r) {
     $w = 10
     foreach ($a in $apps) { $n = ([string]$a.name).Length; if ($n -gt $w) { $w = $n } }
     if ($w -gt 44) { $w = 44 }
-    $L.Add("ALL INSTALLED APPS ($($desk.Count))")
+    $L.Add("DESKTOP APPS ($($desk.Count))")
     foreach ($a in $desk) { $L.Add(('  ' + ([string]$a.name).PadRight($w) + '  ' + $a.version).TrimEnd()) }
     if ($store.Count -gt 0) {
       $L.Add('')
@@ -306,39 +312,13 @@ try {
   $chkAuto.Checked = Test-AutoRun
   $form.Add_Shown({ $form.Activate() })
 
-  # ---- self-test: press each read-only button and look at the result ------------------
-  if ($SelfTest) {
+  # ---- test seam: the hook script presses the buttons and checks the result ------------
+  if ($TestHook) {
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $form.Location      = New-Object System.Drawing.Point(-32000, -32000)
+    $form.Location      = New-Object System.Drawing.Point(-32000, -32000)   # off-screen
     $form.ShowInTaskbar = $false
     $form.Show()
-    function Wait-Idle {
-      $sw = [System.Diagnostics.Stopwatch]::StartNew()
-      do { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 } while ($script:job -and $sw.Elapsed.TotalSeconds -lt 90)
-    }
-    function Check([string]$Name, $Ok) { if ($Ok) { "ok    $Name" } else { "FAIL  $Name"; $script:fail++ } }
-    function Save-Shot([string]$Suffix) {
-      if (-not $Shot) { return }
-      $path = $Shot -replace '\.png$', "$Suffix.png"
-      $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
-      $form.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
-      $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-      $bmp.Dispose()
-    }
-    Wait-Idle
-    Check 'window opens with the welcome text' ($txt.Text -match 'Pick a button')
-    Save-Shot '-welcome'
-    $btnApps.PerformClick(); Wait-Idle
-    Check 'My apps shows the count'            ($txt.Text -match '^\d+ apps installed')
-    Check 'My apps shows both change sections' ($txt.Text -match 'NEW SINCE YOUR LAST CHECK' -and $txt.Text -match 'EARLIER IN THE LAST 30 DAYS')
-    Check 'My apps lists the installed apps'   ($txt.Text -match '(?m)^ALL INSTALLED APPS \(\d+\)\r?$')
-    # Echo the top of the page (everything above the full list) so a test can read it.
-    foreach ($line in ($txt.Text -split "`r?`n")) { if ($line -like 'ALL INSTALLED APPS*') { break }; "      | $line" }
-    Save-Shot '-apps'
-    $btnSpecs.PerformClick(); Wait-Idle
-    Check 'My PC shows the summary'            ($txt.Text -match '(?m)^OS\s+\S' -and $txt.Text -match '(?m)^CPU\s+\S')
-    Check 'buttons are enabled again'          ($btnSpecs.Enabled -and $btnApps.Enabled -and -not $script:job)
-    Save-Shot ''
+    . $TestHook
     $form.Close()
     $form.Dispose()
     exit $script:fail
@@ -346,7 +326,7 @@ try {
 
   [System.Windows.Forms.Application]::Run($form)
 } catch {
-  if ($SelfTest) { "FAIL  launcher: $($_.Exception.Message)"; exit 1 }
+  if ($TestHook) { "FAIL  launcher: $($_.Exception.Message)"; exit 1 }
   # No window available (stripped-down Windows): fall back to the keyboard menu.
   Start-Process -FilePath (Join-Path $here 'Menu.bat')
 }

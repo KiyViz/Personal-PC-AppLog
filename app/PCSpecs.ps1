@@ -18,7 +18,7 @@
   "spec" holds stable facts (diffed between runs). "live" holds values that
   change constantly (uptime, free RAM, free disk, link status) and is not diffed.
 
-.PARAMETER LogDir  Output folder. Default: .\logs next to this script.
+.PARAMETER LogDir  Output folder. Default: the logs folder next to Start.bat.
 .PARAMETER Json    Print JSON to stdout instead of the text summary.
 .PARAMETER Copy    Also copy the text summary to the clipboard.
 .PARAMETER NoSave  Print only; write nothing to disk.
@@ -40,6 +40,9 @@ $ErrorActionPreference = 'Stop'
 # $PSScriptRoot is empty inside param() defaults in Windows PowerShell 5.1, so resolve here.
 if (-not $LogDir) {
   $here = $PSScriptRoot; if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+  # Normal layout: this script is in app\ and logs\ sits one level up, next to Start.bat.
+  $up = Split-Path -Parent $here
+  if ($up -and (Test-Path -LiteralPath (Join-Path $up 'Start.bat'))) { $here = $up }
   $LogDir = Join-Path $here 'logs'
 }
 $Schema   = 'pcspecs/1'

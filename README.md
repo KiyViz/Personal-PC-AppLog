@@ -1,70 +1,146 @@
-# Personal-PC-AppLog
+# PC AppLog
 
-Two tiny, read-only Windows tools for reviewing and diagnosing your PC:
+**See what is inside your PC and what changed on it. One click. Nothing to install.**
 
-- **AppLog**: snapshots installed apps and logs what was added, removed or updated since last time.
-- **PCSpecs**: full hardware and OS specs in one click, copied to your clipboard. No clicking through Settings > About.
+A small, free tool for Windows 10 and 11. Double-click **Start**, press a button, and you get:
 
-Runs on Windows 10/11 with built-in PowerShell. Nothing to install. No admin rights needed.
+- **My PC**: your full specs in one short list, ready to paste into a support chat, an email or a forum post.
+- **My apps**: everything installed on the PC, plus what was added, removed or updated recently.
 
-## Quick start
+![The PC AppLog window after pressing My PC: a short list of the computer's parts](docs/screenshots/my-pc.png)
 
-1. Download this folder (green **Code** button > **Download ZIP**, then unzip) or clone it anywhere.
-2. Double-click **`Start.bat`**. A small window opens with these buttons:
+<sub>The screenshots on this page show made-up sample data.</sub>
+
+## Download and start
+
+### [Download PC AppLog (ZIP)](https://github.com/KiyViz/Personal-PC-AppLog/releases/latest/download/Personal-PC-AppLog.zip)
+
+1. Click the link above. The file `Personal-PC-AppLog.zip` lands in your Downloads folder.
+2. Right-click the ZIP and choose **Extract All**.
+3. Open the new folder and double-click **Start** (it may show as `Start.bat`).
+
+That is the whole setup. There is no installer, no account and no admin password prompt.
+
+**If Windows shows a warning the first time** ("Windows protected your PC" or "Open File - Security Warning"), that is Windows being careful with any file downloaded from the internet. Choose **More info > Run anyway**, or **Run**. See [Is it safe?](#is-it-safe) below for exactly what the tool does.
+
+## When is it useful?
+
+| Situation | What you do |
+|---|---|
+| Someone asks **"what are your specs?"** in a support chat, forum or Discord | Press **My PC**, then **Copy to clipboard**, and paste. |
+| **Something broke** and you wonder what changed | Press **My apps** to see what was installed, removed or updated lately. |
+| You are asking an **AI assistant** for help with your PC, an upgrade or whether a game will run | Paste the **My PC** list so it works from facts, not guesses. |
+| You are thinking about an **upgrade** | **My PC** shows free memory slots, your graphics card and driver, and disk space and health. |
+| You are about to **reinstall Windows or move to a new PC** | **My apps** is the list of everything to install again. |
+| You help a **family member or friend** with their PC | Ask them to press one button and send you the result. |
+| You want to notice **apps that appeared without you asking** | Tick the weekly check, and look at **My apps** now and then. |
+
+## What it looks like
+
+**My apps** shows one page: what changed since your last check, what changed in the last 30 days, and the full list.
+
+![The PC AppLog window after pressing My apps: recent changes and the list of installed apps](docs/screenshots/my-apps.png)
 
 | Button | What it does |
 |---|---|
 | **My PC** | Your hardware and Windows version in one short list. |
-| **My apps** | Everything installed, plus what was added, removed or updated since your last check and over the last 30 days. |
-| **Check automatically every Sunday at 10:00** | Tick to turn the weekly check on, untick to turn it off. |
-| **Copy to clipboard** | Copies what is on screen, ready to paste into a chat, email or forum post. |
+| **My apps** | Everything installed, plus what was added, removed or updated. |
+| **Check automatically every Sunday at 10:00** | Tick it and the check runs by itself once a week. Untick it to stop. |
+| **Copy to clipboard** | Copies what is on screen so you can paste it anywhere. |
 | **Open saved logs** | Opens the folder where results are kept. |
 
-The first app check saves a baseline; later checks show what changed. Everything is saved in `logs\` next to the scripts.
+## Is it safe?
 
-Prefer the keyboard? Double-click **`Menu.bat`** for the same tools as a numbered terminal menu.
+Short answer: it only looks, it does not touch.
 
-If Windows shows "Windows protected your PC" the first time, choose **More info > Run anyway**. The scripts are plain text, so you can read them first.
+| Question | Answer |
+|---|---|
+| Does it install anything? | No. It runs from the folder you unzipped. |
+| Does it need an admin password? | No. |
+| Does it change my settings, apps or files? | No. It reads information and writes its results into a `logs` folder next to **Start**. |
+| Does it send anything over the internet? | No. It makes no network connections. Your results stay on your PC until you paste them somewhere yourself. |
+| Does it collect personal details? | The specs list has no serial numbers, no network (MAC) addresses, no computer name and no user name. Your app list is personal, so read it before you share it. |
+| Does it keep running in the background? | No. When you close the window, it is gone. The one exception is the weekly check, and only if you tick that box. |
+| What does the weekly check add? | One entry in Windows Task Scheduler named `Personal-PC-AppLog`. Unticking the box removes it. |
+| Can I see what it does? | Yes. It is a handful of plain-text scripts in the `app` folder that anyone can open and read. It is open source under the MIT license. |
+| Is it tested? | Yes. An automatic test runs on every change: [![test](https://github.com/KiyViz/Personal-PC-AppLog/actions/workflows/test.yml/badge.svg)](https://github.com/KiyViz/Personal-PC-AppLog/actions/workflows/test.yml) |
 
-## What you get
+## Remove it
 
-**My PC** gives a list like this:
+1. Open **Start** and untick the weekly check, if you turned it on.
+2. Delete the folder.
+
+Nothing else is left behind.
+
+## Questions
+
+**Where are my results?**
+In the `logs` folder next to **Start**. The **Open saved logs** button takes you there.
+
+**The first time I pressed My apps it said there was nothing to compare. Why?**
+The first check saves a starting point. From the second check on, it shows what changed.
+
+**Why are some apps listed with odd names like `Microsoft.WindowsCalculator`?**
+Apps from the Microsoft Store are recorded under their package name. They are listed in their own section.
+
+**Does it show temperatures or run benchmarks?**
+No. It is a quick summary and a change log. For sensors and stress tests, tools like HWiNFO do that well.
+
+**Does it work on Windows 10?**
+Yes, Windows 10 and 11. It uses the PowerShell that is already part of Windows.
+
+**Something looks wrong or is missing.**
+Please [open an issue](https://github.com/KiyViz/Personal-PC-AppLog/issues) and say what you expected to see.
+
+## For advanced users
+
+<details>
+<summary>Terminal menu, command line, JSON and AI assistants</summary>
+
+### What is in the folder
 
 ```
-OS       Windows 11 Pro 24H2 (build 26100.2314, 64-bit)
-CPU      AMD Ryzen 7 7800X3D 8-Core Processor - 8 cores / 16 threads
-RAM      32 GB (2x16 GB @ 6000 MT/s, 2 of 4 slots)
-GPU      NVIDIA GeForce RTX 4070 - 12 GB, driver 566.14 (32.0.15.6614), 2024-11-08
-Board    Micro-Star International Co., Ltd. B650 TOMAHAWK, BIOS 1.90 (2024-08-21)
-Display  2560x1440 @ 165 Hz [primary] - DELL S2721DGF on NVIDIA GeForce RTX 4070
-Display  1080x1920 @ 60 Hz [portrait] - DELL U2419H on NVIDIA GeForce RTX 4070
-Disk     Samsung SSD 990 PRO 2TB - 1863 GB SSD NVMe, Healthy [C:]
-Network  Intel(R) Ethernet Controller I226-V
-Free     C: 812/1862 GB (44%)
-Uptime   5.2 h (boot 2024-11-23T09:01:12), RAM free 21.4 GB
+Start.bat        opens the window
+app\             the scripts (plain text, PowerShell 5.1)
+  PCSpecs.ps1      hardware and OS specs
+  AppLog.ps1       installed apps and what changed
+  Schedule.ps1     adds or removes the weekly Task Scheduler task
+  Launcher.ps1     the window that Start.bat opens
+  Menu.bat         the same tools as a numbered keyboard menu
+logs\            created on first use; your results
+AGENTS.md        notes and schemas for AI assistants
 ```
 
-**My apps** gives one page like this:
+### Keyboard menu
 
-```
-214 apps installed. Checked just now.
+Double-click `app\Menu.bat` for a numbered menu in a terminal instead of the window.
 
-NEW SINCE YOUR LAST CHECK
-  Added    Blender 4.3.0
-  Updated  Google Chrome: 131.0.6778.86 -> 131.0.6778.109
-  Removed  Old Game Launcher 2.1
+### Command line
 
-EARLIER IN THE LAST 30 DAYS
-  Nov 12  Updated  7-Zip: 24.07 -> 24.08
-
-ALL INSTALLED APPS (171)
-  7-Zip                    24.08
-  Blender                  4.3.0
-  Google Chrome            131.0.6778.109
-  ...
+```powershell
+.\app\PCSpecs.ps1 -Copy           # summary + copy to clipboard
+.\app\PCSpecs.ps1 -NoSave         # print only, write nothing
+.\app\AppLog.ps1                  # snapshot + show changes
+.\app\AppLog.ps1 -History 30      # changes in the last 30 days (writes nothing)
+.\app\AppLog.ps1 -All             # include hidden components (runtimes, sub-installers)
+.\app\AppLog.ps1 -NoStore         # skip Microsoft Store apps
+.\app\Schedule.ps1 -Every Daily -At 09:30
+.\app\Schedule.ps1 -Remove
 ```
 
-## Outputs
+`PCSpecs.ps1` and `AppLog.ps1` also take `-Json` (machine-readable output) and `-LogDir <path>` (save logs somewhere else). Run `Get-Help .\app\AppLog.ps1 -Full` for details.
+
+If PowerShell says running scripts is disabled:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\app\PCSpecs.ps1
+```
+
+### With an AI assistant
+
+See [AGENTS.md](AGENTS.md) for the JSON schemas and diagnosis hints. Short version: run `.\app\PCSpecs.ps1 -Json -NoSave` and `.\app\AppLog.ps1 -History 30 -Json`, then paste the output or let your agent run them.
+
+### Saved files
 
 ```
 logs\
@@ -76,56 +152,18 @@ logs\
   specs\
     latest.json                full specs ("spec" = stable, "live" = uptime, free space...)
     latest.txt                 plain-text summary
-    changes.jsonl              field-level spec changes (e.g. GPU driver updated)
+    changes.jsonl              field-level spec changes (for example a GPU driver update)
     history\<date>.json        full specs at each change
 ```
 
 JSON, UTF-8, no BOM. Snapshots are written only when something changed, so the folder stays small.
 
-## Command line
+### Tests and screenshots
 
-`Start.bat` and `Menu.bat` only run the scripts for you. You can also run them directly from Windows PowerShell:
+`tests\Smoke.ps1` runs both tools into a temporary folder and checks the output (exit codes, JSON, no false changes), then opens the window off-screen and presses each button. It runs on every push. `tests\Make-Screenshots.ps1` regenerates the pictures on this page from sample data. Neither folder is in the download ZIP.
 
-```powershell
-.\AppLog.ps1                    # snapshot + show changes
-.\AppLog.ps1 -History 30        # changes in the last 30 days (writes nothing)
-.\AppLog.ps1 -All               # include hidden components (runtimes, sub-installers)
-.\AppLog.ps1 -NoStore           # skip Microsoft Store apps
-.\PCSpecs.ps1 -Copy             # summary + copy to clipboard
-.\PCSpecs.ps1 -NoSave           # print only, write nothing
-.\Schedule.ps1 -Every Daily -At 09:30
-.\Schedule.ps1 -Remove
-```
-
-AppLog and PCSpecs also take `-Json` (machine-readable output) and `-LogDir <path>` (save logs somewhere else).
-Run `Get-Help .\AppLog.ps1 -Full` for details.
-
-If PowerShell says running scripts is disabled, use:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\PCSpecs.ps1
-```
-
-## Using it with an AI assistant
-
-See [AGENTS.md](AGENTS.md). Short version: run `.\PCSpecs.ps1 -Json -NoSave` and `.\AppLog.ps1 -History 30 -Json`, then paste the output (or let your agent run them).
-
-## Privacy
-
-- Read-only. AppLog and PCSpecs never change system settings or apps; they write only to `logs\`.
-- The only system change is optional: the weekly-check tick box (`Schedule.ps1`) adds one Task Scheduler task, and unticking it removes it.
-- Nothing is sent anywhere. The scripts make no network connections.
-- PCSpecs collects no serial numbers, MAC addresses, computer name or user name.
-- Your app list is personal. `logs\` is in `.gitignore`. Review before you post it anywhere.
-
-## Uninstall
-
-Double-click `Start.bat`, untick the weekly check if you turned it on, then delete the folder.
-
-## Tests
-
-`tests\Smoke.ps1` runs both tools into a temporary folder and checks the output contract (exit codes, JSON, no BOM, no false changes), then opens the window off-screen and presses each button. It runs on every push.
+</details>
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Free to use, copy and change.

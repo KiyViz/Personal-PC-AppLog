@@ -1,5 +1,5 @@
 @echo off
-rem Keyboard menu for people who like a terminal. Most people: double-click Start.bat instead.
+rem Keyboard menu for people who like a terminal. Most people: double-click Start.bat (one folder up) instead.
 setlocal
 title Personal-PC-AppLog menu
 set "PS=powershell -NoProfile -ExecutionPolicy Bypass -File"
