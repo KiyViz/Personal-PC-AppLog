@@ -16,6 +16,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\app\AppLog.ps1 -Histo
 
 Exit code `0` means ok, `1` means error (the message is in the `error` field). With `-Json`, stdout is one JSON document.
 
+Each script is self-contained. Without a clone, fetch the raw file and run it with switches:
+
+```
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/KiyViz/Personal-PC-AppLog/main/app/PCSpecs.ps1))) -Json -NoSave
+```
+
+Show the user the script, or its URL, and get their OK before running downloaded code. Without `-LogDir`, a script that is not run from a file saves under `.\logs` in the current folder.
+
 ## Typical questions
 
 | Question | Do this |

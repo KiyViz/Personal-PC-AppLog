@@ -168,6 +168,10 @@ powershell -ExecutionPolicy Bypass -File .\app\PCSpecs.ps1
 
 See [AGENTS.md](AGENTS.md) for the JSON schemas and diagnosis hints. Short version: run `.\app\PCSpecs.ps1 -Json -NoSave` and `.\app\AppLog.ps1 -History 30 -Json`, then paste the output or let your agent run them.
 
+### Without downloading anything
+
+`PCSpecs.ps1` and `AppLog.ps1` each work on their own. Open one on GitHub, copy all of its text, paste it into a **Windows PowerShell** window and press Enter. Results are saved in a `logs` folder inside the folder the window is in. Read the code first; that is the point of it being plain text.
+
 ### Saved files
 
 ```

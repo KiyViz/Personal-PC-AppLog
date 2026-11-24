@@ -46,6 +46,19 @@ try {
   Check 'PCSpecs text mode exits 0'              ($r.code -eq 0)
   Check 'PCSpecs text mode prints a summary'     ($r.text -match '(?m)^OS\s+\S')
 
+  # Copy-paste: the script text run with no file on disk (pasted into a window, or given to
+  # an AI). It must work and save under the current folder.
+  $paste = Join-Path ([IO.Path]::GetTempPath()) ('applog-paste-' + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $paste | Out-Null
+  Push-Location -LiteralPath $paste
+  try {
+    foreach ($t in 'PCSpecs', 'AppLog') {
+      $text = [IO.File]::ReadAllText((Join-Path $root "app\$t.ps1"))
+      $out = @($text | & $ps -NoProfile -ExecutionPolicy Bypass -Command - 2>&1) -join "`n"
+      Check "$t works when pasted (no file)"     ($out -notmatch 'Exception|cannot|error' -and (Test-Path -LiteralPath (Join-Path $paste 'logs\runs.jsonl')))
+    }
+  } finally { Pop-Location; Remove-Item -LiteralPath $paste -Recurse -Force }
+
   $r = Run 'PCSpecs.ps1' @('-Json', '-LogDir', $tmp)
   Check 'PCSpecs first save is a baseline'       ($r.code -eq 0 -and @($r.json.changes).Count -eq 1 -and $r.json.changes[0].event -eq 'baseline')
   $r = Run 'PCSpecs.ps1' @('-Json', '-LogDir', $tmp)

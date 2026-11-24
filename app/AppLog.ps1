@@ -36,10 +36,16 @@ param(
 $ErrorActionPreference = 'Stop'
 # $PSScriptRoot is empty inside param() defaults in Windows PowerShell 5.1, so resolve here.
 if (-not $LogDir) {
-  $here = $PSScriptRoot; if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
-  # Normal layout: this script is in app\ and logs\ sits one level up, next to Start.bat.
-  $up = Split-Path -Parent $here
-  if ($up -and (Test-Path -LiteralPath (Join-Path $up 'Start.bat'))) { $here = $up }
+  $here = $PSScriptRoot
+  if (-not $here -and $MyInvocation.MyCommand.Path) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+  if ($here) {
+    # Normal layout: this script is in app\ and logs\ sits one level up, next to Start.bat.
+    $up = Split-Path -Parent $here
+    if ($up -and (Test-Path -LiteralPath (Join-Path $up 'Start.bat'))) { $here = $up }
+  } else {
+    # Pasted into a PowerShell window rather than run from a file: use the current folder.
+    $here = (Get-Location).ProviderPath
+  }
   $LogDir = Join-Path $here 'logs'
 }
 $Schema  = 'applog/1'
