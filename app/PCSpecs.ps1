@@ -22,6 +22,8 @@
 .PARAMETER Json    Print JSON to stdout instead of the text summary.
 .PARAMETER Copy    Also copy the text summary to the clipboard.
 .PARAMETER NoSave  Print only; write nothing to disk.
+.PARAMETER FromFile  For tests: build the notes and summary from a specs JSON file instead of
+                   this PC. Implies -NoSave. A display entry may carry "maxHz".
 
 .EXAMPLE
   .\PCSpecs.ps1 -Copy
@@ -33,7 +35,8 @@ param(
   [string]$LogDir = '',
   [switch]$Json,
   [switch]$Copy,
-  [switch]$NoSave
+  [switch]$NoSave,
+  [string]$FromFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -134,6 +137,16 @@ public static class PCSpecsDisplay {
 
   public static DISPLAY_DEVICE NewDevice() { var d = new DISPLAY_DEVICE(); d.cb = Marshal.SizeOf(d); return d; }
   public static DEVMODE NewMode() { var m = new DEVMODE(); m.dmSize = (short)Marshal.SizeOf(m); return m; }
+
+  // Highest refresh rate the display offers at this resolution (in either orientation).
+  public static int MaxHz(string device, int w, int h) {
+    int best = 0; DEVMODE m = NewMode();
+    for (int i = 0; EnumDisplaySettings(device, i, ref m); i++) {
+      bool same = (m.dmPelsWidth == w && m.dmPelsHeight == h) || (m.dmPelsWidth == h && m.dmPelsHeight == w);
+      if (same && m.dmDisplayFrequency > best) best = m.dmDisplayFrequency;
+    }
+    return best;
+  }
 }
 '@
 
@@ -240,6 +253,7 @@ $decode = { param($a) if ($a) { -join (@($a) | Where-Object { $_ -ne 0 } | ForEa
 $monByKey = @{}
 foreach ($m in $wmiMon) { $monByKey[(Get-MonitorKey $m.InstanceName)] = (& $decode $m.UserFriendlyName) }
 $monInUse = @{}   # filled by the displays section (hashtable, so the child scope can write to it)
+$hzMax    = @{}   # output name -> highest refresh rate on offer; used only for the notes
 
 $displays = @(Section {
   if (-not ('PCSpecsDisplay' -as [type])) { Add-Type -TypeDefinition $DisplayApi }
@@ -251,6 +265,7 @@ $displays = @(Section {
     if (($dd.StateFlags -band 1) -eq 0) { continue }            # not attached to desktop
     $dm = [PCSpecsDisplay]::NewMode()
     if (-not [PCSpecsDisplay]::EnumDisplaySettings($dd.DeviceName, -1, [ref]$dm)) { continue }
+    $hzMax[($dd.DeviceName -replace '^\\\\\.\\', '')] = [PCSpecsDisplay]::MaxHz($dd.DeviceName, $dm.dmPelsWidth, $dm.dmPelsHeight)
     # An output can list several monitors (e.g. a plugged-in but disabled TV); take the active one.
     # Flag 1 = EDD_GET_DEVICE_INTERFACE_NAME, so DeviceID matches WmiMonitorID.InstanceName.
     $monName = $null
@@ -345,15 +360,136 @@ $live = Section {
   }
 }
 
+if ($FromFile) {
+  # Tests only: swap in the specs from a file, then build notes and summary exactly as usual.
+  $t = [IO.File]::ReadAllText($FromFile) | ConvertFrom-Json
+  $os = $t.spec.os; $system = $t.spec.system; $memory = $t.spec.memory; $live = $t.live
+  $cpu = @($t.spec.cpu); $gpu = @($t.spec.gpu); $displays = @($t.spec.displays); $monitors = @($t.spec.monitors)
+  $disks = @($t.spec.disks); $network = @($t.spec.network); $audio = @($t.spec.audio)
+  $hzMax = @{}
+  foreach ($d in $displays) { if ($d -and $d.PSObject.Properties['maxHz']) { $hzMax[[string]$d.output] = $d.maxHz } }
+  $NoSave = $true
+}
+
+# ---- worth knowing: plain-language notes drawn from the data above ----------------------
+# level "attention" = act soon, "info" = good to know. The rules are deliberately cautious:
+# a note that is wrong is worse than a note that is missing.
+$allNotes = @(Section {
+  function Note([string]$Level, [string]$Text) { [pscustomobject][ordered]@{ level = $Level; text = $Text } }
+
+  # Disks that report trouble.
+  foreach ($d in @($disks)) {
+    if (-not $d -or @('Warning', 'Unhealthy') -notcontains [string]$d.health) { continue }
+    $where = ''; if ($d.letters) { $where = " (drive $($d.letters))" }
+    Note 'attention' "Disk $($d.model)$where reports its health as '$($d.health)'. Back up anything important on it now."
+  }
+
+  # Drives that are nearly full. Windows itself turns the bar red below 10% free.
+  foreach ($v in @($live.volumes)) {
+    if (-not $v -or -not $v.sizeGB -or $v.sizeGB -lt 8) { continue }     # skip tiny system partitions
+    $pct = 100 * $v.freeGB / $v.sizeGB
+    $msg = "Drive $($v.drive) is $([math]::Round(100 - $pct))% full: $($v.freeGB) GB free of $($v.sizeGB) GB."
+    if ($pct -lt 5 -or ($v.drive -eq $env:SystemDrive -and $v.freeGB -lt 15)) {
+      Note 'attention' "$msg Windows needs free space to update and run well, so free some up soon."
+    } elseif ($pct -lt 10) { Note 'info' $msg }
+  }
+
+  # No real graphics driver, or a very old one.
+  foreach ($g in @($gpu)) {
+    if (-not $g -or -not $g.name) { continue }
+    if ($g.name -match 'Basic Display|Basic Render') {
+      Note 'attention' 'Windows is using its basic display driver, so no proper graphics driver is installed. Get the driver from the maker of the PC or the graphics card.'
+    } elseif ($g.driverDate -and ((Get-Date) - [datetime]$g.driverDate).TotalDays -ge 730) {
+      Note 'info' "The graphics driver for $($g.name) is from $(([string]$g.driverDate).Substring(0, 7)). If you have display or game problems, updating it is a good first step."
+    }
+  }
+
+  # Memory running below the speed it was sold for.
+  $mods = @($memory.modules | Where-Object { $_ -and $_.configuredMTs })
+  if ($mods.Count -gt 0) {
+    $now = [int]($mods | Measure-Object -Property configuredMTs -Minimum).Minimum
+    $rated = 0; $part = ''
+    foreach ($m in $mods) {
+      $r = [int]$m.ratedMTs
+      # Many kits carry their speed in the part number: F4-3600C18, CMK32GX5M2B6000C36, F5-6000J3038.
+      if ([string]$m.part -match '(?<!\d)(\d{4})[CJ]\d{2}') {
+        $fromPart = [int]$Matches[1]
+        if ($fromPart -ge 1600 -and $fromPart -le 10000 -and $fromPart -gt $r) { $r = $fromPart }
+      }
+      if ($r -gt $rated) { $rated = $r; $part = [string]$m.part }
+    }
+    if ($rated - $now -ge 200) {
+      $msg = "Memory is running at $now MT/s, but at least one stick ($part) is rated for $rated. On a desktop this usually means XMP or EXPO (DOCP on some boards) is off in the BIOS."
+      if (@($mods | ForEach-Object { [string]$_.part } | Sort-Object -Unique).Count -gt 1) { $msg += ' Mixing different memory kits can also hold the speed down.' }
+      Note 'info' $msg
+    }
+  }
+  if ($memory.totalGB -and $memory.totalGB -lt 8) {
+    Note 'info' "This PC has $($memory.totalGB) GB of memory, which is tight for Windows today. Closing browser tabs and background apps helps the most."
+  }
+
+  # A display set below the refresh rate it can do.
+  foreach ($d in @($displays)) {
+    if (-not $d -or -not $d.hz) { continue }
+    $max = [int]$hzMax[[string]$d.output]
+    if ($max - $d.hz -ge 10) {
+      Note 'info' "Display $($d.monitor) is set to $($d.hz) Hz but can do $max Hz at this resolution. Change it in Settings > System > Display > Advanced display."
+    }
+  }
+
+  # A wired connection stuck at 100 Mbps on a faster adapter.
+  foreach ($n in @($live.network)) {
+    if (-not $n -or $n.status -ne 'Up' -or $n.linkSpeed -ne '100 Mbps') { continue }
+    $dev = [string](@($network | Where-Object { $_.name -eq $n.name }) | Select-Object -First 1).device
+    if ($dev -match 'Gigabit|GbE|2\.5G|10G' -and $dev -notmatch 'Wi-?Fi|Wireless') {
+      Note 'info' "The wired network ($dev) is connected at 100 Mbps although the adapter can go faster. An old or damaged cable, or a slow router port, is the usual cause."
+    }
+  }
+
+  # A long time without a restart.
+  if ($live.uptimeHours -ge 240) {
+    Note 'info' "Windows has been running for $([math]::Floor($live.uptimeHours / 24)) days without a restart. Restarting clears up many slowdowns and lets updates finish. Use Restart: Shut down may not count."
+  }
+
+  # Windows 10 is out of regular support.
+  if ($os.name -like 'Windows 10*' -and $os.name -notmatch 'LTSC|IoT') {
+    Note 'info' 'Windows 10 support ended in October 2025. Unless this PC is enrolled in Extended Security Updates, it no longer gets security fixes.'
+  }
+})
+# "attention" first, otherwise in the order above.
+$notes = @($allNotes | Where-Object { $_.level -eq 'attention' }) + @($allNotes | Where-Object { $_.level -ne 'attention' })
+
 $spec = [ordered]@{
   os = $os; system = $system; cpu = $cpu; memory = $memory; gpu = $gpu
   displays = $displays; monitors = $monitors; disks = $disks; network = $network; audio = $audio
 }
-$doc = [ordered]@{ schema = $Schema; taken = $ts; spec = $spec; live = $live }
+$doc = [ordered]@{ schema = $Schema; taken = $ts; notes = $notes; spec = $spec; live = $live }
 
 # ---- text summary --------------------------------------------------------------
+function Get-Wrapped([string]$Text, [int]$Width) {
+  $line = ''
+  foreach ($w in ($Text -split ' ')) {
+    if ($line -and ($line.Length + 1 + $w.Length) -gt $Width) { $line; $line = $w }
+    elseif ($line) { $line += " $w" } else { $line = $w }
+  }
+  if ($line) { $line }
+}
 function Get-Summary {
   $L = New-Object System.Collections.Generic.List[string]
+  $L.Add('WORTH KNOWING')
+  $shown = @($notes | Where-Object { $_ -and $_.PSObject.Properties['text'] })
+  if ($shown.Count -eq 0) {
+    $L.Add('  Nothing stands out. Checked: disk space and health, memory speed, display')
+    $L.Add('  refresh rate, graphics driver, network link and time since the last restart.')
+  }
+  foreach ($n in $shown) {
+    $mark = '-'; if ($n.level -eq 'attention') { $mark = '!' }
+    $first = $true
+    foreach ($piece in @(Get-Wrapped $n.text 78)) {
+      if ($first) { $L.Add("  $mark $piece"); $first = $false } else { $L.Add("    $piece") }
+    }
+  }
+  $L.Add('')
   $L.Add("OS       $($os.name) $($os.release) (build $($os.build), $($os.arch))")
   # Custom builds report placeholders ("System Product Name"); the Board line covers those.
   $placeholder = 'System manufacturer|System Product Name|To Be Filled|Default string'
@@ -366,7 +502,8 @@ function Get-Summary {
   }
   foreach ($g in $gpu) {
     $ver = $g.driver; if ($g.driverFriendly) { $ver = "$($g.driverFriendly) ($($g.driver))" }
-    $L.Add("GPU      $($g.name) - $($g.vramGB) GB, driver $ver, $($g.driverDate)")
+    $mem = ''; if ($g.vramGB) { $mem = " - $($g.vramGB) GB" }
+    $L.Add("GPU      $($g.name)$mem, driver $ver, $($g.driverDate)")
   }
   $L.Add("Board    $($system.board), BIOS $($system.bios) ($($system.biosDate))")
   foreach ($d in $displays) {
@@ -384,8 +521,8 @@ function Get-Summary {
   $vols = @($live.volumes | ForEach-Object { "$($_.drive) $($_.freeGB)/$($_.sizeGB) GB ($($_.freePct)%)" })
   if ($vols) { $L.Add("Free     " + ($vols -join '; ')) }
   $L.Add("Uptime   $($live.uptimeHours) h (boot $($live.lastBoot)), RAM free $($live.ramFreeGB) GB")
-  foreach ($k in @($spec.Keys) + 'live') {
-    $v = if ($k -eq 'live') { $live } else { $spec[$k] }
+  foreach ($k in @($spec.Keys) + 'live' + 'notes') {
+    $v = if ($k -eq 'live') { $live } elseif ($k -eq 'notes') { $notes } else { $spec[$k] }
     foreach ($x in @($v)) { if ($x -and $x.PSObject.Properties['error']) { $L.Add("Error    ${k}: $($x.error)") } }
   }
   $L -join "`r`n"

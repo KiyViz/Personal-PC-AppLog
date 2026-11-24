@@ -134,11 +134,21 @@ function Format-AppsText($d) {
 
 function Get-SpecsData([string]$Text) {
   # The "My PC" page as rows of Item / Details, read back from the summary text.
-  $rows = @(); $inSummary = $true
+  $rows = New-Object System.Collections.Generic.List[object]
+  $labels = '^(OS|System|CPU|RAM|GPU|Board|Display|Monitors|Disk|Network|Free|Uptime|Error)\s+(\S.*)$'
+  $inNote = $false
   foreach ($line in ($Text -split "`r?`n")) {
-    if (-not $line.Trim()) { $inSummary = $false; continue }
-    if ($inSummary -and $line -match '^(\S+)\s+(\S.*)$') { $rows += [pscustomobject]@{ Item = $Matches[1]; Details = $Matches[2] } }
-    elseif ($line -match '^\s+~ (.+)$')                  { $rows += [pscustomobject]@{ Item = 'Changed since last run'; Details = $Matches[1] } }
+    if ($line -match '^  ([!-]) (.+)$') {
+      $item = 'Worth knowing'; if ($Matches[1] -eq '!') { $item = 'Needs attention' }
+      $rows.Add([pscustomobject]@{ Item = $item; Details = $Matches[2] })
+      $inNote = $true
+    } elseif ($inNote -and $line -match '^    (\S.*)$') {
+      $rows[$rows.Count - 1].Details += ' ' + $Matches[1]      # a long note continues on the next line
+    } else {
+      $inNote = $false
+      if ($line -cmatch $labels)          { $rows.Add([pscustomobject]@{ Item = $Matches[1]; Details = $Matches[2] }) }
+      elseif ($line -match '^\s+~ (.+)$') { $rows.Add([pscustomobject]@{ Item = 'Changed since last run'; Details = $Matches[1] }) }
+    }
   }
   @{ kind = 'pc'; name = 'PC specs'; json = (Join-Path $logsPath 'specs\latest.json'); rows = $rows }
 }

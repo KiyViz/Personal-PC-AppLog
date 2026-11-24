@@ -3,9 +3,10 @@
   Regenerate the README screenshots (docs\screenshots\*.png) with made-up sample data.
 
 .DESCRIPTION
-  Copies the real window (app\Launcher.ps1) into a temp folder next to two stand-in tools that
-  print fictional specs and a fictional app list, then lets tests\LauncherHook.ps1 press the
-  buttons and take the pictures. Nothing from this PC's real hardware or app list is shown.
+  Copies the real window (app\Launcher.ps1) into a temp folder. My PC is drawn by the real
+  PCSpecs.ps1 from a made-up PC (tests\fixtures\sample.json); My apps uses a made-up app
+  list. tests\LauncherHook.ps1 presses the buttons and takes the pictures. Nothing from this
+  PC's real hardware or app list is shown.
 
   The window appears on screen for a few seconds while the pictures are taken.
 
@@ -22,21 +23,10 @@ $now   = Get-Date
 function Stamp([datetime]$d) { $d.ToString('yyyy-MM-ddTHH:mm:ssK') }
 
 # ---- fictional data ---------------------------------------------------------------
-$specs = @"
-OS       Windows 11 Home 24H2 (build 26100.2314, 64-bit)
-CPU      AMD Ryzen 7 7800X3D 8-Core Processor - 8 cores / 16 threads
-RAM      32 GB (2x16 GB @ 6000 MT/s, 2 of 4 slots)
-GPU      NVIDIA GeForce RTX 4070 - 12 GB, driver 566.14 (32.0.15.6614), 2024-11-12
-Board    Micro-Star International Co., Ltd. B650 TOMAHAWK, BIOS 1.90 (2024-08-21)
-Display  2560x1440 @ 165 Hz [primary] - DELL S2721DGF on NVIDIA GeForce RTX 4070
-Display  1080x1920 @ 60 Hz [portrait] - DELL U2419H on NVIDIA GeForce RTX 4070
-Disk     Samsung SSD 990 PRO 2TB - 1863 GB SSD NVMe, Healthy [C:]
-Disk     WDC WD40EZAZ-00SF3B0 - 3726 GB HDD SATA, Healthy [D:]
-Network  Intel(R) Ethernet Controller I226-V
-Network  Intel(R) Wi-Fi 6E AX211 160MHz
-Free     C: 812/1862 GB (44%); D: 2105/3726 GB (56%)
-Uptime   5.2 h (boot $($now.AddHours(-5.2).ToString('yyyy-MM-ddTHH:mm:ss'))), RAM free 21.4 GB
-"@
+# A healthy made-up PC with two things worth pointing out, so the pictures show the notes.
+$specs = [IO.File]::ReadAllText((Join-Path $root 'tests\fixtures\sample.json'))
+$specs = $specs.Replace('DRIVERDATE', $now.AddDays(-12).ToString('yyyy-MM-dd')).Replace('LASTBOOT', $now.AddHours(-5.2).ToString('yyyy-MM-ddTHH:mm:ss'))
+$specs = $specs.Replace('"hz": 165, "maxHz": 165', '"hz": 60, "maxHz": 165').Replace('"freeGB": 2105, "freePct": 56', '"freeGB": 298, "freePct": 8')
 
 $desktop = @'
 7-Zip 24.08 (x64)|24.08
@@ -92,10 +82,13 @@ try {
   New-Item -ItemType Directory -Force -Path (Join-Path $demo 'app'), (Join-Path $demo 'logs\apps'), (Join-Path $demo 'logs\specs'), $out | Out-Null
   [IO.File]::WriteAllText((Join-Path $demo 'logs\specs\latest.json'), '{"schema":"pcspecs/1","spec":{},"live":{}}', $utf8)
   Copy-Item -LiteralPath (Join-Path $root 'app\Launcher.ps1') -Destination (Join-Path $demo 'app\Launcher.ps1')
-  [IO.File]::WriteAllText((Join-Path $demo 'app\specs.txt'),  $specs, $utf8)
+  [IO.File]::WriteAllText((Join-Path $demo 'app\sample.json'), $specs, $utf8)
   [IO.File]::WriteAllText((Join-Path $demo 'app\result.json'), ([pscustomobject]$result | ConvertTo-Json -Depth 5), $utf8)
   $stub = 'param([string]$LogDir, [switch]$Json, [int]$History) [IO.File]::ReadAllText((Join-Path $PSScriptRoot ''{0}''))'
-  [IO.File]::WriteAllText((Join-Path $demo 'app\PCSpecs.ps1'), ($stub -f 'specs.txt'),  $utf8)
+  # My PC: the real PCSpecs.ps1 draws the notes and the summary from the made-up PC.
+  $real = Join-Path $root 'app\PCSpecs.ps1'
+  $call = "param([string]`$LogDir, [switch]`$Json) & '$($real.Replace("'", "''"))' -FromFile (Join-Path `$PSScriptRoot 'sample.json')"
+  [IO.File]::WriteAllText((Join-Path $demo 'app\PCSpecs.ps1'), $call, $utf8)
   [IO.File]::WriteAllText((Join-Path $demo 'app\AppLog.ps1'),  ($stub -f 'result.json'), $utf8)
   $latest = [ordered]@{ schema = 'applog/1'; taken = $ts; count = $apps.Count; apps = $apps }
   [IO.File]::WriteAllText((Join-Path $demo 'logs\apps\latest.json'), ($latest | ConvertTo-Json -Depth 4 -Compress), $utf8)

@@ -51,6 +51,38 @@ try {
   $r = Run 'PCSpecs.ps1' @('-Json', '-LogDir', $tmp)
   Check 'PCSpecs second save has no false changes' ($r.code -eq 0 -and @($r.json.changes).Count -eq 0)
 
+  # ---- Worth knowing: every rule, on made-up PCs (tests\fixtures) ----
+  $r = Run 'PCSpecs.ps1' @('-Json', '-NoSave', '-LogDir', $tmp)
+  Check 'PCSpecs JSON has a notes list'          ($r.json -and $r.json.PSObject.Properties['notes'])
+  $fx = Join-Path $root 'tests\fixtures'
+  $runsBefore = @(Get-Content -LiteralPath (Join-Path $tmp 'runs.jsonl')).Count
+  $r = Run 'PCSpecs.ps1' @('-Json', '-FromFile', (Join-Path $fx 'trouble.json'), '-LogDir', $tmp)
+  $notes = @($r.json.notes)
+  Check 'trouble PC: exits 0 and saves nothing'  ($r.code -eq 0 -and @(Get-Content -LiteralPath (Join-Path $tmp 'runs.jsonl')).Count -eq $runsBefore)
+  Check 'trouble PC: 11 notes'                   ($notes.Count -eq 11)
+  Check 'trouble PC: the 3 urgent notes come first' ((@($notes | ForEach-Object { $_.level }) -join ',') -eq (@('attention') * 3 + @('info') * 8 -join ','))
+  $expect = 'health as .Warning', 'Drive C: is 98% full', 'basic display driver', 'Drive D: is 92% full', 'is from 2020-03',
+            'rated for 3200', '4 GB of memory', '60 Hz but can do 165 Hz', 'connected at 100 Mbps', '21 days without a restart', 'Windows 10 support ended'
+  foreach ($k in $expect) { Check "trouble PC: note about '$k'" (@($notes | Where-Object { $_.text -match $k }).Count -eq 1) }
+  $all = @($notes | ForEach-Object { $_.text }) -join ' '
+  Check 'trouble PC: USB stick, Wi-Fi, tiny partition and second display stay quiet' ($all -notmatch 'USB Stick|Wi-Fi|Drive [EG]:|Example 24 ')
+
+  # A healthy made-up PC. Its two dates are filled in relative to today so the test does not age.
+  $clean = Join-Path ([IO.Path]::GetTempPath()) ('applog-sample-' + [guid]::NewGuid().ToString('N') + '.json')
+  $json = [IO.File]::ReadAllText((Join-Path $fx 'sample.json')).Replace('DRIVERDATE', (Get-Date).AddDays(-30).ToString('yyyy-MM-dd')).Replace('LASTBOOT', (Get-Date).AddHours(-5).ToString('yyyy-MM-ddTHH:mm:ss'))
+  [IO.File]::WriteAllText($clean, $json)
+  try {
+    $r = Run 'PCSpecs.ps1' @('-Json', '-FromFile', $clean)
+    Check 'healthy PC: no notes'                 ($r.code -eq 0 -and @($r.json.notes).Count -eq 0)
+    $r = Run 'PCSpecs.ps1' @('-FromFile', $clean)
+    Check 'healthy PC: says nothing stands out'  ($r.text -match '(?m)^WORTH KNOWING\r?$' -and $r.text -match 'Nothing stands out')
+    # One setting wrong: exactly one note, and long notes wrap instead of running off the window.
+    [IO.File]::WriteAllText($clean, $json.Replace('"hz": 165, "maxHz": 165', '"hz": 60, "maxHz": 165'))
+    $r = Run 'PCSpecs.ps1' @('-FromFile', $clean)
+    Check 'one wrong setting: one note'          (@([regex]::Matches($r.text, '(?m)^  [!-] ')).Count -eq 1 -and $r.text -match 'DELL S2721DGF is set to 60 Hz')
+    Check 'notes wrap at the window width'       (@(($r.text -split "`n") | Where-Object { $_.TrimEnd().Length -gt 84 -and $_ -match '^  ' }).Count -eq 0)
+  } finally { Remove-Item -LiteralPath $clean -Force }
+
   # ---- AppLog ----
   $r = Run 'AppLog.ps1' @('-Json', '-LogDir', $tmp)
   Check 'AppLog first run is a baseline'         ($r.code -eq 0 -and $r.json.status -eq 'ok' -and @($r.json.changes).Count -eq 1 -and $r.json.changes[0].event -eq 'baseline')

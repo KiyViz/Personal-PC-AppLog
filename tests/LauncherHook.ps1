@@ -93,6 +93,10 @@ Test-Exports 'My apps' 'applog/1' ($v.new.Count + $v.old.Count + $v.desk.Count +
 
 $btnSpecs.PerformClick(); Wait-Idle
 Check 'My PC shows the summary'            ($txt.Text -match '(?m)^OS\s+\S' -and $txt.Text -match '(?m)^CPU\s+\S')
+Check 'My PC starts with Worth knowing'    ($txt.Text -match '^WORTH KNOWING\r?\n  \S')
+$demo = "WORTH KNOWING`r`n  ! Disk X reports trouble. Back`r`n    it up now.`r`n  - Drive C: is 91% full.`r`n`r`nOS       Windows 11`r`nMonitors connected but not in use: TV`r`n`r`n1 spec change(s) since last run:`r`n  ~ gpu[0].driver: 1 -> 2"
+$rows = @((Get-SpecsData $demo).rows | ForEach-Object { "$($_.Item)=$($_.Details)" }) -join ' ; '
+Check 'notes and specs read back as rows'  ($rows -eq 'Needs attention=Disk X reports trouble. Back it up now. ; Worth knowing=Drive C: is 91% full. ; OS=Windows 11 ; Monitors=connected but not in use: TV ; Changed since last run=gpu[0].driver: 1 -> 2')
 Check 'no folder paths in the copied text' ($txt.Text -notmatch '(?m)^(Saved|Log): ')
 Check 'buttons are enabled again'          ($btnSpecs.Enabled -and $btnApps.Enabled -and -not $script:job)
 Save-Shot 'my-pc'

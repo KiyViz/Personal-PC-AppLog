@@ -4,7 +4,7 @@
 
 A small, free tool for Windows 10 and 11. Double-click **Start**, press a button, and you get:
 
-- **My PC**: your full specs in one short list, ready to paste into a support chat, an email or a forum post.
+- **My PC**: your full specs in one short list, ready to paste into a support chat, an email or a forum post. It starts with **Worth knowing**: plain-language notes on anything that deserves a look, like a nearly full drive.
 - **My apps**: everything installed on the PC, plus what was added, removed or updated recently.
 
 Copy the result with one click, or save it as a text file, a Markdown note, a spreadsheet or JSON.
@@ -30,6 +30,7 @@ That is the whole setup. There is no installer, no account and no admin password
 | Situation | What you do |
 |---|---|
 | Someone asks **"what are your specs?"** in a support chat, forum or Discord | Press **My PC**, then **Copy to clipboard**, and paste. |
+| Your PC **feels slow or something seems off** | Press **My PC** and read the **Worth knowing** notes at the top. |
 | **Something broke** and you wonder what changed | Press **My apps** to see what was installed, removed or updated lately. |
 | You are asking an **AI assistant** for help with your PC, an upgrade or whether a game will run | Paste the **My PC** list so it works from facts, not guesses. |
 | You are thinking about an **upgrade** | **My PC** shows free memory slots, your graphics card and driver, and disk space and health. |
@@ -40,13 +41,24 @@ That is the whole setup. There is no installer, no account and no admin password
 
 ## What it looks like
 
+**My PC** starts with **Worth knowing**. It only speaks up when something deserves a look, and says so when nothing does. It checks for:
+
+- a drive that is nearly full, or a disk that reports a health problem
+- memory running slower than it was sold for
+- a display set to a lower refresh rate than it can do
+- a missing or very old graphics driver
+- a wired network connection stuck at a slow speed
+- a long time without a restart, very little memory, or Windows 10 being out of support
+
+Notes marked `!` are worth acting on soon. Notes marked `-` are good to know.
+
 **My apps** shows one page: what changed since your last check, what changed in the last 30 days, and the full list.
 
 ![The PC AppLog window after pressing My apps: recent changes and the list of installed apps](docs/screenshots/my-apps.png)
 
 | Button | What it does |
 |---|---|
-| **My PC** | Your hardware and Windows version in one short list. |
+| **My PC** | Your hardware and Windows version in one short list, with notes on anything worth a look. |
 | **My apps** | Everything installed, plus what was added, removed or updated. |
 | **Check automatically every Sunday at 10:00** | Tick it and the check runs by itself once a week. Untick it to stop. |
 | **Copy to clipboard** | Copies what is on screen so you can paste it anywhere. |

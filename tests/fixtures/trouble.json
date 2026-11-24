@@ -1,0 +1,47 @@
+{
+  "about": "Made-up PC where every 'Worth knowing' rule should fire. Used by tests/Smoke.ps1.",
+  "spec": {
+    "os": { "name": "Windows 10 Home", "release": "22H2", "build": "19045.5131", "arch": "64-bit" },
+    "system": { "maker": "Example", "model": "Tower 1", "board": "Example B450", "bios": "1.0", "biosDate": "2019-05-01" },
+    "cpu": [ { "name": "Example CPU", "cores": 4, "threads": 8, "maxMHz": 3600 } ],
+    "memory": {
+      "totalGB": 4, "slotsUsed": 2, "slotsTotal": 4,
+      "modules": [
+        { "slot": "DIMM_A1", "sizeGB": 2, "ratedMTs": 2133, "configuredMTs": 2133, "maker": "Corsair", "part": "CMK4GX4M1A3200C16" },
+        { "slot": "DIMM_B1", "sizeGB": 2, "ratedMTs": 2133, "configuredMTs": 2133, "maker": "Other", "part": "XYZ-2133" }
+      ]
+    },
+    "gpu": [
+      { "name": "Microsoft Basic Display Adapter", "vramGB": null, "driver": "10.0.19041.1", "driverFriendly": null, "driverDate": "2006-06-21" },
+      { "name": "Example Graphics 9000", "vramGB": 4, "driver": "1.2.3.4", "driverFriendly": null, "driverDate": "2020-03-15" }
+    ],
+    "displays": [
+      { "output": "DISPLAY1", "adapter": "Example Graphics 9000", "monitor": "Example 27Q", "width": 2560, "height": 1440, "hz": 60, "maxHz": 165, "orientation": "landscape", "primary": true, "x": 0, "y": 0 },
+      { "output": "DISPLAY2", "adapter": "Example Graphics 9000", "monitor": "Example 24", "width": 1920, "height": 1080, "hz": 60, "maxHz": 60, "orientation": "landscape", "primary": false, "x": 2560, "y": 0 }
+    ],
+    "monitors": [ { "name": "Example 27Q", "maker": "EXA", "year": 2022, "inUse": true } ],
+    "disks": [
+      { "disk": 0, "model": "Example SSD 500", "sizeGB": 466, "media": "SSD", "bus": "SATA", "health": "Warning", "letters": "C:" },
+      { "disk": 1, "model": "Example HDD 2000", "sizeGB": 1863, "media": "HDD", "bus": "SATA", "health": "Healthy", "letters": "D:" },
+      { "disk": 2, "model": "Example USB Stick", "sizeGB": 29, "media": "Unspecified", "bus": "USB", "health": "Unknown", "letters": "E:" }
+    ],
+    "network": [
+      { "name": "Ethernet", "device": "Example PCIe GbE Family Controller" },
+      { "name": "Wi-Fi", "device": "Example Wi-Fi 6 Gigabit Wireless Card" }
+    ],
+    "audio": []
+  },
+  "live": {
+    "lastBoot": "2026-01-01T08:00:00", "uptimeHours": 505.5, "ramFreeGB": 0.6,
+    "volumes": [
+      { "drive": "C:", "label": "", "fs": "NTFS", "sizeGB": 465, "freeGB": 9, "freePct": 2 },
+      { "drive": "D:", "label": "Data", "fs": "NTFS", "sizeGB": 1863, "freeGB": 150, "freePct": 8 },
+      { "drive": "E:", "label": "USB", "fs": "FAT32", "sizeGB": 29, "freeGB": 20, "freePct": 69 },
+      { "drive": "G:", "label": "System Reserved", "fs": "NTFS", "sizeGB": 0.05, "freeGB": 0.001, "freePct": 2 }
+    ],
+    "network": [
+      { "name": "Ethernet", "status": "Up", "linkSpeed": "100 Mbps" },
+      { "name": "Wi-Fi", "status": "Up", "linkSpeed": "100 Mbps" }
+    ]
+  }
+}

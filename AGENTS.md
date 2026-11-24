@@ -45,6 +45,7 @@ Exit code `0` means ok, `1` means error (the message is in the `error` field). W
 Apps with the version in their name (for example `HandBrake 1.8.0`) show up as removed + added, not updated.
 
 `specs/latest.json` (`schema: pcspecs/1`)
+- `notes[]` {level, text}: plain-language findings the tool already drew from the data (nearly full drive, disk health, memory below its rated speed, display below its best refresh rate, missing or old graphics driver, wired link at 100 Mbps, long uptime, under 8 GB of memory, Windows 10). `level` is `attention` (act soon) or `info`. An empty list means none of those checks fired. Read these first.
 - `spec.os` {name, release, build, arch, installed, firmware}
 - `spec.system` {maker, model, board, bios, biosDate}
 - `spec.cpu[]` {name, cores, threads, maxMHz}
@@ -63,6 +64,7 @@ A section that failed to read holds `{"error":"..."}` instead of data. Report it
 
 ## Hints for diagnosis
 
+- Start with `notes[]`. The hints below cover what the notes do not, or explain how a note was reached.
 - `memory.modules[].configuredMTs` lower than `ratedMTs` usually means XMP/EXPO is off. Many boards report `ratedMTs` equal to the current speed, so also read the XMP rating from `part` (for example `F4-3600C18` = DDR4-3600 CL18).
 - `memory.slotsUsed` vs `slotsTotal` tells you about upgrade room.
 - `disks[].health` other than `Healthy` is worth flagging right away.

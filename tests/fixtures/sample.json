@@ -1,0 +1,44 @@
+{
+  "about": "Made-up PC used for the README screenshots and for the 'nothing to report' test (see the two variants in tests).",
+  "spec": {
+    "os": { "name": "Windows 11 Home", "release": "24H2", "build": "26100.2314", "arch": "64-bit" },
+    "system": { "maker": "Micro-Star International Co., Ltd.", "model": "MS-7E26", "board": "Micro-Star International Co., Ltd. B650 TOMAHAWK", "bios": "1.90", "biosDate": "2024-08-21" },
+    "cpu": [ { "name": "AMD Ryzen 7 7800X3D 8-Core Processor", "cores": 8, "threads": 16, "maxMHz": 4200 } ],
+    "memory": {
+      "totalGB": 32, "slotsUsed": 2, "slotsTotal": 4,
+      "modules": [
+        { "slot": "DIMM_A2", "sizeGB": 16, "ratedMTs": 6000, "configuredMTs": 6000, "maker": "G Skill Intl", "part": "F5-6000J3038F16G" },
+        { "slot": "DIMM_B2", "sizeGB": 16, "ratedMTs": 6000, "configuredMTs": 6000, "maker": "G Skill Intl", "part": "F5-6000J3038F16G" }
+      ]
+    },
+    "gpu": [ { "name": "NVIDIA GeForce RTX 4070", "vramGB": 12, "driver": "32.0.15.6614", "driverFriendly": "566.14", "driverDate": "DRIVERDATE" } ],
+    "displays": [
+      { "output": "DISPLAY1", "adapter": "NVIDIA GeForce RTX 4070", "monitor": "DELL S2721DGF", "width": 2560, "height": 1440, "hz": 165, "maxHz": 165, "orientation": "landscape", "primary": true, "x": 0, "y": 0 },
+      { "output": "DISPLAY2", "adapter": "NVIDIA GeForce RTX 4070", "monitor": "DELL U2419H", "width": 1080, "height": 1920, "hz": 60, "maxHz": 60, "orientation": "portrait", "primary": false, "x": 2560, "y": -400 }
+    ],
+    "monitors": [
+      { "name": "DELL S2721DGF", "maker": "DEL", "year": 2021, "inUse": true },
+      { "name": "DELL U2419H", "maker": "DEL", "year": 2019, "inUse": true }
+    ],
+    "disks": [
+      { "disk": 0, "model": "Samsung SSD 990 PRO 2TB", "sizeGB": 1863, "media": "SSD", "bus": "NVMe", "health": "Healthy", "letters": "C:" },
+      { "disk": 1, "model": "WDC WD40EZAZ-00SF3B0", "sizeGB": 3726, "media": "HDD", "bus": "SATA", "health": "Healthy", "letters": "D:" }
+    ],
+    "network": [
+      { "name": "Ethernet", "device": "Intel(R) Ethernet Controller I226-V" },
+      { "name": "Wi-Fi", "device": "Intel(R) Wi-Fi 6E AX211 160MHz" }
+    ],
+    "audio": []
+  },
+  "live": {
+    "lastBoot": "LASTBOOT", "uptimeHours": 5.2, "ramFreeGB": 21.4,
+    "volumes": [
+      { "drive": "C:", "label": "", "fs": "NTFS", "sizeGB": 1862, "freeGB": 812, "freePct": 44 },
+      { "drive": "D:", "label": "Data", "fs": "NTFS", "sizeGB": 3726, "freeGB": 2105, "freePct": 56 }
+    ],
+    "network": [
+      { "name": "Ethernet", "status": "Up", "linkSpeed": "2.5 Gbps" },
+      { "name": "Wi-Fi", "status": "Disconnected", "linkSpeed": "0 bps" }
+    ]
+  }
+}
