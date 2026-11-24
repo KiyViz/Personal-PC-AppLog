@@ -65,37 +65,15 @@ function Format-Change($e, [bool]$WithDate) {
   if ($WithDate) { '  {0,-7} {1}' -f ([datetime]$e.ts).ToString('MMM d'), $what } else { "  $what" }
 }
 
-function Get-AppsReport($r) {
-  # One page for "my apps": what changed just now, what changed recently, and the full list.
-  # $r is the JSON result of AppLog.ps1 -Json; the rest comes from the logs it just wrote.
+function Get-AppsData($r) {
+  # Everything the "My apps" page shows, as data: the screen text and every file format are
+  # made from this. $r is the JSON result of AppLog.ps1 -Json; the rest comes from its logs.
   $utf8 = New-Object System.Text.UTF8Encoding($false)
   $apps = @()
   $latest = Join-Path $logsPath 'apps\latest.json'
   if (Test-Path -LiteralPath $latest) {
     try { $apps = @(([IO.File]::ReadAllText($latest, $utf8) | ConvertFrom-Json).apps) } catch { }
   }
-  $desk  = @($apps | Where-Object { $_.source -ne 'store' } | Sort-Object name)
-  $store = @($apps | Where-Object { $_.source -eq 'store' } | Sort-Object name)
-
-  $L = New-Object System.Collections.Generic.List[string]
-  $head = "$($r.apps) apps installed"
-  if ($store.Count -gt 0) { $head += " ($($desk.Count) desktop apps + $($store.Count) Microsoft Store apps)" }
-  $L.Add("$head. Checked just now.")
-  $L.Add('')
-
-  $L.Add('NEW SINCE YOUR LAST CHECK')
-  $new = @($r.changes | Where-Object { $_.event -ne 'baseline' })
-  if (@($r.changes | Where-Object { $_.event -eq 'baseline' }).Count -gt 0) {
-    $L.Add('  This was your first check, so there is nothing to compare yet.')
-    $L.Add('  From now on this part shows what was added, removed or updated.')
-  } elseif ($new.Count -eq 0) {
-    $L.Add('  Nothing changed.')
-  } else {
-    foreach ($e in $new) { $line = Format-Change $e $false; if ($line) { $L.Add($line) } }
-  }
-  $L.Add('')
-
-  $L.Add('EARLIER IN THE LAST 30 DAYS')
   $old = @()
   $log = Join-Path $logsPath 'apps\changes.jsonl'
   if (Test-Path -LiteralPath $log) {
@@ -105,33 +83,134 @@ function Get-AppsReport($r) {
       try { $e = $row | ConvertFrom-Json } catch { continue }
       if ($e.event -ne 'baseline' -and $e.ts -ne $r.ts -and [datetime]$e.ts -ge $cut) { $old += $e }
     }
-  }
-  if ($old.Count -eq 0) { $L.Add('  Nothing.') }
-  else {
     [array]::Reverse($old)   # newest first
-    foreach ($e in $old) { $line = Format-Change $e $true; if ($line) { $L.Add($line) } }
+  }
+  $d = @{
+    kind  = 'apps'; name = 'My apps'; json = $latest
+    total = $r.apps
+    first = (@($r.changes | Where-Object { $_.event -eq 'baseline' }).Count -gt 0)
+    new   = @($r.changes | Where-Object { $_.event -ne 'baseline' })
+    old   = $old
+    desk  = @($apps | Where-Object { $_.source -ne 'store' } | Sort-Object name)
+    store = @($apps | Where-Object { $_.source -eq 'store' } | Sort-Object name)
+  }
+  $d.head = "$($d.total) apps installed"
+  if ($d.store.Count -gt 0) { $d.head += " ($($d.desk.Count) desktop apps + $($d.store.Count) Microsoft Store apps)" }
+  $d
+}
+
+function Format-AppsText($d) {
+  $L = New-Object System.Collections.Generic.List[string]
+  $L.Add("$($d.head). Checked just now.")
+  $L.Add('')
+  $L.Add('NEW SINCE YOUR LAST CHECK')
+  if ($d.first) {
+    $L.Add('  This was your first check, so there is nothing to compare yet.')
+    $L.Add('  From now on this part shows what was added, removed or updated.')
+  } elseif ($d.new.Count -eq 0) {
+    $L.Add('  Nothing changed.')
+  } else {
+    foreach ($e in $d.new) { $line = Format-Change $e $false; if ($line) { $L.Add($line) } }
   }
   $L.Add('')
-
-  if ($apps.Count -gt 0) {
+  $L.Add('EARLIER IN THE LAST 30 DAYS')
+  if ($d.old.Count -eq 0) { $L.Add('  Nothing.') }
+  else { foreach ($e in $d.old) { $line = Format-Change $e $true; if ($line) { $L.Add($line) } } }
+  $L.Add('')
+  if ($d.desk.Count + $d.store.Count -gt 0) {
     $w = 10
-    foreach ($a in $apps) { $n = ([string]$a.name).Length; if ($n -gt $w) { $w = $n } }
+    foreach ($a in @($d.desk) + @($d.store)) { $n = ([string]$a.name).Length; if ($n -gt $w) { $w = $n } }
     if ($w -gt 44) { $w = 44 }
-    $L.Add("DESKTOP APPS ($($desk.Count))")
-    foreach ($a in $desk) { $L.Add(('  ' + ([string]$a.name).PadRight($w) + '  ' + $a.version).TrimEnd()) }
-    if ($store.Count -gt 0) {
+    $L.Add("DESKTOP APPS ($($d.desk.Count))")
+    foreach ($a in $d.desk) { $L.Add(('  ' + ([string]$a.name).PadRight($w) + '  ' + $a.version).TrimEnd()) }
+    if ($d.store.Count -gt 0) {
       $L.Add('')
-      $L.Add("MICROSOFT STORE APPS ($($store.Count))")
-      foreach ($a in $store) { $L.Add(('  ' + ([string]$a.name).PadRight($w) + '  ' + $a.version).TrimEnd()) }
+      $L.Add("MICROSOFT STORE APPS ($($d.store.Count))")
+      foreach ($a in $d.store) { $L.Add(('  ' + ([string]$a.name).PadRight($w) + '  ' + $a.version).TrimEnd()) }
     }
   }
   $L -join "`r`n"
 }
 
+function Get-SpecsData([string]$Text) {
+  # The "My PC" page as rows of Item / Details, read back from the summary text.
+  $rows = @(); $inSummary = $true
+  foreach ($line in ($Text -split "`r?`n")) {
+    if (-not $line.Trim()) { $inSummary = $false; continue }
+    if ($inSummary -and $line -match '^(\S+)\s+(\S.*)$') { $rows += [pscustomobject]@{ Item = $Matches[1]; Details = $Matches[2] } }
+    elseif ($line -match '^\s+~ (.+)$')                  { $rows += [pscustomobject]@{ Item = 'Changed since last run'; Details = $Matches[1] } }
+  }
+  @{ kind = 'pc'; name = 'PC specs'; json = (Join-Path $logsPath 'specs\latest.json'); rows = $rows }
+}
+
+# ---- saving the page to a file --------------------------------------------------------
+function ConvertTo-CsvLine($Cells) {
+  (@($Cells) | ForEach-Object {
+    $c = [string]$_
+    if ($c -match '^[=+\-@]') { $c = "'" + $c }   # so a spreadsheet never runs a cell as a formula
+    '"' + $c.Replace('"', '""') + '"'
+  }) -join ','
+}
+function ConvertTo-MdRow($Cells) {
+  '| ' + ((@($Cells) | ForEach-Object { ([string]$_).Replace('|', '\|') }) -join ' | ') + ' |'
+}
+function Get-ChangeCells($e, [string]$Section) {
+  $ver = $e.version; if ($e.event -eq 'updated') { $ver = $e.to }
+  @($Section, $e.name, $ver, $e.publisher, ([string]$e.event), $e.from, ([datetime]$e.ts).ToString('yyyy-MM-dd'))
+}
+function Get-Export($v, [string]$Format, [string]$ScreenText) {
+  # $v is what Get-AppsData or Get-SpecsData returned. Returns the file content as one string.
+  $nl = "`r`n"
+  $today = (Get-Date).ToString('yyyy-MM-dd')
+  if ($Format -eq 'json') { return [IO.File]::ReadAllText($v.json, (New-Object System.Text.UTF8Encoding($false))) }
+  if ($Format -eq 'txt')  { return $ScreenText + $nl }
+  $L = New-Object System.Collections.Generic.List[string]
+  if ($v.kind -eq 'pc') {
+    if ($Format -eq 'csv') {
+      $L.Add((ConvertTo-CsvLine 'Item', 'Details'))
+      foreach ($r in $v.rows) { $L.Add((ConvertTo-CsvLine $r.Item, $r.Details)) }
+    } else {
+      $L.Add('# PC specs'); $L.Add(''); $L.Add("Checked $today."); $L.Add('')
+      $L.Add('| Item | Details |'); $L.Add('|---|---|')
+      foreach ($r in $v.rows) { $L.Add((ConvertTo-MdRow $r.Item, $r.Details)) }
+    }
+  } elseif ($Format -eq 'csv') {
+    $L.Add((ConvertTo-CsvLine 'Section', 'App', 'Version', 'Publisher', 'Change', 'Previous version', 'Date'))
+    foreach ($e in $v.new)   { $L.Add((ConvertTo-CsvLine (Get-ChangeCells $e 'New since last check'))) }
+    foreach ($e in $v.old)   { $L.Add((ConvertTo-CsvLine (Get-ChangeCells $e 'Earlier in the last 30 days'))) }
+    foreach ($a in $v.desk)  { $L.Add((ConvertTo-CsvLine 'Desktop app', $a.name, $a.version, $a.publisher, '', '', '')) }
+    foreach ($a in $v.store) { $L.Add((ConvertTo-CsvLine 'Microsoft Store app', $a.name, $a.version, $a.publisher, '', '', '')) }
+  } else {
+    $L.Add('# Installed apps'); $L.Add(''); $L.Add("$($v.head). Checked $today."); $L.Add('')
+    $L.Add('## New since the last check'); $L.Add('')
+    if ($v.first) { $L.Add('This was the first check, so there is nothing to compare yet.') }
+    elseif ($v.new.Count -eq 0) { $L.Add('Nothing changed.') }
+    else { foreach ($e in $v.new) { $L.Add('- ' + ((Format-Change $e $false).Trim() -replace '\s{2,}', ' ')) } }
+    $L.Add(''); $L.Add('## Earlier in the last 30 days'); $L.Add('')
+    if ($v.old.Count -eq 0) { $L.Add('Nothing.') }
+    else { foreach ($e in $v.old) { $L.Add('- ' + ([datetime]$e.ts).ToString('yyyy-MM-dd') + ': ' + ((Format-Change $e $false).Trim() -replace '\s{2,}', ' ')) } }
+    foreach ($part in @(@('Desktop apps', $v.desk), @('Microsoft Store apps', $v.store))) {
+      if (@($part[1]).Count -eq 0) { continue }
+      $L.Add(''); $L.Add("## $($part[0]) ($(@($part[1]).Count))"); $L.Add('')
+      $L.Add('| App | Version |'); $L.Add('|---|---|')
+      foreach ($a in $part[1]) { $L.Add((ConvertTo-MdRow $a.name, $a.version)) }
+    }
+  }
+  ($L -join $nl) + $nl
+}
+function Save-View($v, [string]$Path, [string]$Format, [string]$ScreenText) {
+  $text = Get-Export $v $Format $ScreenText
+  # Spreadsheet programs need the byte-order mark to read accented names in a CSV correctly.
+  [IO.File]::WriteAllText($Path, $text, (New-Object System.Text.UTF8Encoding($Format -eq 'csv')))
+}
+
 function Test-AutoRun {
+  # Asks Task Scheduler directly. Starting schtasks.exe for this took about a second.
   try {
-    $p = Start-Process -FilePath 'schtasks.exe' -ArgumentList '/query', '/tn', $TaskName -WindowStyle Hidden -PassThru -Wait
-    $p.ExitCode -eq 0
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+    [void]$svc.GetFolder('\').GetTask($TaskName)
+    $true
   } catch { $false }
 }
 
@@ -140,9 +219,19 @@ try {
   Add-Type -AssemblyName System.Drawing
   try {
     # Sharp text on high-DPI screens. Must run before the first window is created.
-    Add-Type -Namespace PCAppLog -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
-    [void][PCAppLog.Dpi]::SetProcessDPIAware()
+    # This borrows WinForms' own declaration of user32 SetProcessDPIAware; declaring it again
+    # with Add-Type would compile C# at every start and cost about 100 ms.
+    $dpi = [System.Windows.Forms.Form].Assembly.GetType('System.Windows.Forms.SafeNativeMethods').GetMethod('SetProcessDPIAware', [System.Reflection.BindingFlags]'NonPublic,Public,Static')
+    if ($dpi) { [void]$dpi.Invoke($null, @()) }
   } catch { }
+  try {
+    # The first font in a process costs Windows about 0.3 s (more with many fonts installed).
+    # Start that now on a second thread so it overlaps with building the window below.
+    # Pure .NET delegate: no PowerShell code runs off the main thread.
+    $warm = [Delegate]::CreateDelegate([Func[System.Drawing.Font]], [System.Drawing.SystemFonts].GetProperty('MessageBoxFont').GetGetMethod())
+    [void]$warm.BeginInvoke($null, $null)
+  } catch { }
+  $autoRun = Test-AutoRun      # done here so it overlaps with the font warm-up
   [System.Windows.Forms.Application]::EnableVisualStyles()
 
   # ---- window --------------------------------------------------------------------
@@ -151,7 +240,6 @@ try {
   $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
   $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
   $form.Text          = 'PC AppLog'
-  $form.Font          = New-Object System.Drawing.Font('Segoe UI', 10)
   $form.ClientSize    = New-Object System.Drawing.Size(940, 560)
   $form.MinimumSize   = New-Object System.Drawing.Size(700, 420)
   $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
@@ -162,7 +250,6 @@ try {
   $txt.WordWrap   = $false
   $txt.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
   $txt.Dock       = [System.Windows.Forms.DockStyle]::Fill
-  $txt.Font       = New-Object System.Drawing.Font('Consolas', 10)
   $txt.BackColor  = [System.Drawing.SystemColors]::Window
   $txt.TabStop    = $false
   $txt.Text       = ($Welcome -replace "`r?`n", "`r`n")
@@ -193,6 +280,8 @@ try {
   $left.Controls.Add($chkAuto)
 
   $btnCopy = New-Button 'Copy to clipboard'
+  $btnSave = New-Button 'Save to file...'
+  $btnSave.Enabled = $false            # nothing to save until My PC or My apps has run
   $btnLogs = New-Button 'Open saved logs'
 
   $status = New-Object System.Windows.Forms.Label
@@ -206,8 +295,6 @@ try {
   $form.Controls.Add($txt)
   $form.Controls.Add($left)
   $form.Controls.Add($status)
-  $form.ResumeLayout($false)
-  $form.PerformLayout()
 
   $timer = New-Object System.Windows.Forms.Timer
   $timer.Interval = 100
@@ -218,12 +305,15 @@ try {
     $form.UseWaitCursor = $On
     $status.Text = $Msg
   }
-  function Show-Text([string]$Text) {
+  function Show-Text([string]$Text, $View = $null) {
     # Drop the "Saved: C:\Users\<name>\..." lines: people paste this text into chats and forums.
     $Text = $Text -replace '(?m)^(Saved|Log|Logs): .*$', ''
     $txt.Text = ($Text.Trim() -replace "`r?`n", "`r`n")
     $txt.SelectionStart = 0
     $txt.SelectionLength = 0
+    # $View is the page as data (for Save to file). Messages and errors have none.
+    $script:view = $View
+    $btnSave.Enabled = [bool]$View
   }
   function Start-Tool([string]$Script, [string[]]$ToolArgs, [string]$Busy, [scriptblock]$Done) {
     if ($script:job) { return }
@@ -269,7 +359,13 @@ try {
     Start-Tool 'PCSpecs.ps1' @() 'Reading your PC specs...' {
       param($text, $code)
       Show-Text $text
-      if ($code -eq 0) { $status.Text = 'Done. Press "Copy to clipboard" to paste this somewhere.' } else { $status.Text = 'Finished with an error.' }
+      if ($code -eq 0) {
+        $script:view = Get-SpecsData $txt.Text     # rows are read back from the text on screen
+        $btnSave.Enabled = $true
+        $status.Text = 'Done. Copy it to the clipboard or save it to a file.'
+      } else {
+        $status.Text = 'Finished with an error.'
+      }
     }
   })
   $btnApps.Add_Click({
@@ -278,8 +374,9 @@ try {
       $r = $null
       try { $r = $text | ConvertFrom-Json } catch { }
       if ($r -and $r.status -eq 'ok') {
-        Show-Text (Get-AppsReport $r)
-        $n = @($r.changes | Where-Object { $_.event -ne 'baseline' }).Count
+        $d = Get-AppsData $r
+        Show-Text (Format-AppsText $d) $d
+        $n = $d.new.Count
         if ($n -eq 0) { $status.Text = 'Done. Nothing changed since your last check.' }
         else          { $status.Text = "Done. $n change(s) since your last check." }
       } else {
@@ -304,12 +401,42 @@ try {
       $status.Text = 'Copied. Paste it anywhere with Ctrl+V.'
     }
   })
+  function New-SaveDialog($v) {
+    $dlg = New-Object System.Windows.Forms.SaveFileDialog
+    $dlg.Title    = 'Save to file'
+    $dlg.Filter   = 'Plain text (*.txt)|*.txt|Markdown, for notes and forums (*.md)|*.md|Spreadsheet, CSV (*.csv)|*.csv|JSON, for other programs (*.json)|*.json'
+    $dlg.FileName = "$($v.name) $((Get-Date).ToString('yyyy-MM-dd'))"
+    $dlg
+  }
+  function Get-SaveFormat([string]$FileName, [int]$FilterIndex) {
+    # The ending the person typed wins; otherwise the type picked in the list (1 = first).
+    $formats = @('txt', 'md', 'csv', 'json')
+    $fmt = [IO.Path]::GetExtension($FileName).TrimStart('.').ToLowerInvariant()
+    if ($formats -notcontains $fmt) { $fmt = $formats[$FilterIndex - 1] }
+    $fmt
+  }
+  $btnSave.Add_Click({
+    if (-not $script:view) { return }
+    $dlg = New-SaveDialog $script:view
+    if ($dlg.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    try {
+      Save-View $script:view $dlg.FileName (Get-SaveFormat $dlg.FileName $dlg.FilterIndex) $txt.Text
+      $status.Text = "Saved $([IO.Path]::GetFileName($dlg.FileName))"
+    } catch {
+      $status.Text = "Could not save: $($_.Exception.Message)"
+    }
+  })
   $btnLogs.Add_Click({
     if (-not (Test-Path -LiteralPath $logsPath)) { New-Item -ItemType Directory -Force -Path $logsPath | Out-Null }
     Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $logsPath)
   })
 
-  $chkAuto.Checked = Test-AutoRun
+  $chkAuto.Checked = $autoRun
+  # Fonts last: everything above ran while the font warm-up was working in the background.
+  $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+  $txt.Font  = New-Object System.Drawing.Font('Consolas', 10)
+  $form.ResumeLayout($false)
+  $form.PerformLayout()
   $form.Add_Shown({ $form.Activate() })
 
   # ---- test seam: the hook script presses the buttons and checks the result ------------
@@ -329,4 +456,16 @@ try {
   if ($TestHook) { "FAIL  launcher: $($_.Exception.Message)"; exit 1 }
   # No window available (stripped-down Windows): fall back to the keyboard menu.
   Start-Process -FilePath (Join-Path $here 'Menu.bat')
+} finally {
+  # Start.bat hides the console window it runs in. After a double-click that console is a
+  # throwaway, and its title is the path of cmd.exe. If someone typed Start.bat in their own
+  # terminal instead, the title is something else: show that terminal again.
+  if (-not $TestHook) {
+    try {
+      if ([Console]::Title -ne $env:ComSpec) {
+        Add-Type -Namespace PCAppLog -Name Con -MemberDefinition '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);'
+        [void][PCAppLog.Con]::ShowWindow([PCAppLog.Con]::GetConsoleWindow(), 5)
+      }
+    } catch { }
+  }
 }

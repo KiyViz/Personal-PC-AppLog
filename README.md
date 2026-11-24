@@ -7,6 +7,8 @@ A small, free tool for Windows 10 and 11. Double-click **Start**, press a button
 - **My PC**: your full specs in one short list, ready to paste into a support chat, an email or a forum post.
 - **My apps**: everything installed on the PC, plus what was added, removed or updated recently.
 
+Copy the result with one click, or save it as a text file, a Markdown note, a spreadsheet or JSON.
+
 ![The PC AppLog window after pressing My PC: a short list of the computer's parts](docs/screenshots/my-pc.png)
 
 <sub>The screenshots on this page show made-up sample data.</sub>
@@ -34,6 +36,7 @@ That is the whole setup. There is no installer, no account and no admin password
 | You are about to **reinstall Windows or move to a new PC** | **My apps** is the list of everything to install again. |
 | You help a **family member or friend** with their PC | Ask them to press one button and send you the result. |
 | You want to notice **apps that appeared without you asking** | Tick the weekly check, and look at **My apps** now and then. |
+| You want the list in a **spreadsheet, your notes or another program** | Press **Save to file** and pick the type. |
 
 ## What it looks like
 
@@ -47,7 +50,17 @@ That is the whole setup. There is no installer, no account and no admin password
 | **My apps** | Everything installed, plus what was added, removed or updated. |
 | **Check automatically every Sunday at 10:00** | Tick it and the check runs by itself once a week. Untick it to stop. |
 | **Copy to clipboard** | Copies what is on screen so you can paste it anywhere. |
+| **Save to file...** | Saves what is on screen as a file. You pick the type (see below). |
 | **Open saved logs** | Opens the folder where results are kept. |
+
+### File types for Save to file
+
+| Type | Good for |
+|---|---|
+| Plain text (`.txt`) | Email, printing, or anywhere that just needs words. Same as what you see on screen. |
+| Markdown (`.md`) | Notes apps, GitHub, Reddit and other places that turn Markdown into neat tables. |
+| Spreadsheet (`.csv`) | Excel, Google Sheets or LibreOffice. One row per part or per app, so you can sort and filter. |
+| JSON (`.json`) | Other programs and scripts. |
 
 ## Is it safe?
 
@@ -73,6 +86,9 @@ Short answer: it only looks, it does not touch.
 Nothing else is left behind.
 
 ## Questions
+
+**How fast does it open?**
+About one second on the PC it was built on. The very first start after downloading takes a little longer.
 
 **Where are my results?**
 In the `logs` folder next to **Start**. The **Open saved logs** button takes you there.
@@ -160,7 +176,7 @@ JSON, UTF-8, no BOM. Snapshots are written only when something changed, so the f
 
 ### Tests and screenshots
 
-`tests\Smoke.ps1` runs both tools into a temporary folder and checks the output (exit codes, JSON, no false changes), then opens the window off-screen and presses each button. It runs on every push. `tests\Make-Screenshots.ps1` regenerates the pictures on this page from sample data. Neither folder is in the download ZIP.
+`tests\Smoke.ps1` runs both tools into a temporary folder and checks the output (exit codes, JSON, no false changes), then opens the window off-screen and presses each button. It runs on every push. `tests\Make-Screenshots.ps1` regenerates the pictures on this page from sample data. `tests\Measure-Startup.ps1` times how long the window takes to appear (the budget is under one second). Neither folder is in the download ZIP.
 
 </details>
 

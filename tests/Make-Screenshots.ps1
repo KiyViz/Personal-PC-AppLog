@@ -89,7 +89,8 @@ $result = [ordered]@{ schema = 'applog/1'; ts = $ts; status = 'ok'; apps = $apps
 
 try {
   # ---- demo folder: the real window, stand-in tools --------------------------------
-  New-Item -ItemType Directory -Force -Path (Join-Path $demo 'app'), (Join-Path $demo 'logs\apps'), $out | Out-Null
+  New-Item -ItemType Directory -Force -Path (Join-Path $demo 'app'), (Join-Path $demo 'logs\apps'), (Join-Path $demo 'logs\specs'), $out | Out-Null
+  [IO.File]::WriteAllText((Join-Path $demo 'logs\specs\latest.json'), '{"schema":"pcspecs/1","spec":{},"live":{}}', $utf8)
   Copy-Item -LiteralPath (Join-Path $root 'app\Launcher.ps1') -Destination (Join-Path $demo 'app\Launcher.ps1')
   [IO.File]::WriteAllText((Join-Path $demo 'app\specs.txt'),  $specs, $utf8)
   [IO.File]::WriteAllText((Join-Path $demo 'app\result.json'), ([pscustomobject]$result | ConvertTo-Json -Depth 5), $utf8)

@@ -50,8 +50,29 @@ function Save-Shot([string]$Name) {
   "shot  $Name.png ($w x $h)"
 }
 
+function Test-Exports([string]$Label, [string]$Schema, [int]$Rows) {
+  # Save the page in every format and read each file back the way its target program would.
+  $dir = Join-Path ([IO.Path]::GetTempPath()) ('applog-export-' + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $dir | Out-Null
+  try {
+    foreach ($f in 'txt', 'md', 'csv', 'json') { Save-View $script:view (Join-Path $dir "out.$f") $f $txt.Text }
+    Check "$Label saves as TXT"      ([IO.File]::ReadAllText((Join-Path $dir 'out.txt')).Trim() -eq $txt.Text.Trim())
+    $md = [IO.File]::ReadAllText((Join-Path $dir 'out.md'))
+    Check "$Label saves as Markdown" ($md -match '(?m)^# \S' -and $md -match '(?m)^\|---\|---\|\r?$')
+    $csv = @(Import-Csv -LiteralPath (Join-Path $dir 'out.csv'))
+    Check "$Label saves as CSV ($($csv.Count) rows)" ($csv.Count -eq $Rows -and $Rows -gt 0)
+    $b = [IO.File]::ReadAllBytes((Join-Path $dir 'out.csv'))
+    Check "$Label CSV opens cleanly in a spreadsheet (has BOM)" ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)
+    $j = $null; try { $j = Get-Content -LiteralPath (Join-Path $dir 'out.json') -Raw | ConvertFrom-Json } catch { }
+    Check "$Label saves as JSON"     ($j -and $j.schema -eq $Schema)
+  } finally { Remove-Item -LiteralPath $dir -Recurse -Force }
+}
+
 Wait-Idle
 Check 'window opens with the welcome text' ($txt.Text -match 'Pick a button')
+Check 'Save to file is off until there is a result' (-not $btnSave.Enabled)
+Check 'CSV cells cannot run as formulas'   ((ConvertTo-CsvLine '=1+1', 'a"b', 'ok') -eq '"''=1+1","a""b","ok"')
+Check 'Markdown cells keep their pipes'    ((ConvertTo-MdRow 'a|b', 'c') -eq '| a\|b | c |')
 Save-Shot 'welcome'
 
 $btnApps.PerformClick(); Wait-Idle
@@ -61,11 +82,22 @@ Check 'My apps lists the installed apps'   ($txt.Text -match '(?m)^DESKTOP APPS 
 # Echo the top of the page (everything above the full list) so Smoke.ps1 can read it.
 foreach ($line in ($txt.Text -split "`r?`n")) { if ($line -like 'DESKTOP APPS*') { break }; "      | $line" }
 Save-Shot 'my-apps'
+$v = $script:view
+Check 'Save to file is on after My apps'   ($btnSave.Enabled -and $v.kind -eq 'apps')
+$dlg = New-SaveDialog $v
+Check 'Save dialog offers four file types' (($dlg.Filter -split '\|').Count -eq 8 -and $dlg.FileName -like 'My apps 20*')
+$dlg.Dispose()
+Check 'typed ending decides the file type' ((Get-SaveFormat 'C:\x\list.CSV' 1) -eq 'csv' -and (Get-SaveFormat 'C:\x\list.md' 4) -eq 'md')
+Check 'otherwise the picked type decides'  ((Get-SaveFormat 'C:\x\list' 3) -eq 'csv' -and (Get-SaveFormat 'C:\x\v1.2 notes' 2) -eq 'md')
+Test-Exports 'My apps' 'applog/1' ($v.new.Count + $v.old.Count + $v.desk.Count + $v.store.Count)
 
 $btnSpecs.PerformClick(); Wait-Idle
 Check 'My PC shows the summary'            ($txt.Text -match '(?m)^OS\s+\S' -and $txt.Text -match '(?m)^CPU\s+\S')
 Check 'no folder paths in the copied text' ($txt.Text -notmatch '(?m)^(Saved|Log): ')
 Check 'buttons are enabled again'          ($btnSpecs.Enabled -and $btnApps.Enabled -and -not $script:job)
 Save-Shot 'my-pc'
+$v = $script:view
+Check 'Save to file is on after My PC'     ($btnSave.Enabled -and $v.kind -eq 'pc' -and $v.rows.Count -ge 5)
+Test-Exports 'My PC' 'pcspecs/1' $v.rows.Count
 
 if ($back) { $back.Close(); $back.Dispose() }
