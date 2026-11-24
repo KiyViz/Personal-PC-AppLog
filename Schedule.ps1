@@ -57,4 +57,4 @@ try {
 $when = 'Sundays'; if ($Every -eq 'Daily') { $when = 'daily' }
 "Scheduled '$TaskName': $when at $At. Runs at next startup if the PC was off."
 "Logs: $(Join-Path $PSScriptRoot 'logs')"
-"Undo: Start.bat option 5, or Schedule.ps1 -Remove"
+"Undo: untick the box in Start.bat, or run Schedule.ps1 -Remove"

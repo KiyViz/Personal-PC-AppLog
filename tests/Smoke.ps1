@@ -81,6 +81,12 @@ try {
   $r = Run 'AppLog.ps1' @('-History', '30', '-LogDir', $tmp)
   Check 'AppLog -History text mode exits 0'      ($r.code -eq 0 -and $r.text -match 'Smoke Test Removed App')
 
+  # ---- window (Start.bat -> Launcher.ps1) ----
+  $r = Run 'Launcher.ps1' @('-SelfTest', '-LogDir', $tmp)
+  Check 'Launcher window opens and its buttons work' ($r.code -eq 0)
+  Check 'Launcher My apps page shows earlier changes' ($r.text -match 'EARLIER IN THE LAST 30 DAYS[\s\S]*Removed\s+Smoke Test Removed App')
+  if ($r.code -ne 0) { $r.text }
+
   # ---- files on disk ----
   $files = @(Get-ChildItem -LiteralPath $tmp -Recurse -File)
   Check 'no .tmp files left behind'              (@($files | Where-Object { $_.Extension -eq '.tmp' }).Count -eq 0)

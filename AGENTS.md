@@ -2,7 +2,7 @@
 
 This repo holds read-only Windows diagnostics. `AppLog.ps1` and `PCSpecs.ps1` never modify the system. They write only under `logs\` (or `-LogDir`).
 
-`Schedule.ps1` is the one exception: it adds or removes a Task Scheduler task named `Personal-PC-AppLog`. Ask the user before running it. `Start.bat` is an interactive menu for people; agents should call the `.ps1` files directly. After editing a script, run `tests\Smoke.ps1` and keep the scripts plain ASCII.
+`Schedule.ps1` is the one exception: it adds or removes a Task Scheduler task named `Personal-PC-AppLog`. Ask the user before running it. `Start.bat` (a window, `Launcher.ps1`) and `Menu.bat` (a terminal menu) are for people; agents should call `AppLog.ps1` and `PCSpecs.ps1` directly. After editing a script, run `tests\Smoke.ps1` and keep the scripts plain ASCII.
 
 ## Run
 
